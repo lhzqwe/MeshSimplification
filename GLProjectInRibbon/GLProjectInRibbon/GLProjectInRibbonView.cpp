@@ -726,6 +726,21 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	vector<Color> excludedColor = { Color(0.0, 0.0, 0.0) };
 	GenerateUniqueColorList(number_of_segments, colorList, excludedColor);
 	m_MeshList.resize(number_of_segments);
+
+	double maxSDF = DOUBLE_MIN;
+	int indexMaxSDF = -1;
+	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
+		facet_it != m_Polyhedron.facets_end(); ++facet_it)
+	{
+		if (internal_sdf_map[facet_it] > maxSDF)
+		{
+			maxSDF = internal_sdf_map[facet_it];
+			indexMaxSDF = internal_segment_map[facet_it];
+		}
+	}
+
+	//m_MeshList[indexMaxSDF].SetDelete();
+
 	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
 		facet_it != m_Polyhedron.facets_end(); ++facet_it)
 	{
@@ -756,6 +771,24 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 		m_MeshList[meshIndex].vertices[lastIndex - 1].Normal = vNormal;
 		m_MeshList[meshIndex].vertices[lastIndex - 2].Normal = vNormal;
 	}
+	
+	//TO DO : mesh simplification
+	//adjacent graph
+	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
+
+	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
+		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
+	{
+		int indexMesh = segment_property_map[halfedge_it->facet()];
+		int indexOppositeMesh = segment_property_map[halfedge_it->opposite()->facet()];
+		if (indexMesh == indexOppositeMesh) continue;
+		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
+	}
+
+	//construct tree
+	ConstructTree(indexMaxSDF);
+	SimplifyWithDelete();
+
 	//Set Color
 	assert(m_MeshList.size() == colorList.size());
 	for (int i = 0; i < m_MeshList.size(); ++i)
@@ -991,6 +1024,7 @@ void CGLProjectInRibbonView::DrawModelSegmentation()
 	//Draw Objects....................................
 	for (int i = 0; i < m_MeshList.size(); ++i)
 	{
+		if (m_MeshList[i].isDeleted()) continue;
 		InitMaterial(m_MeshList[i].color);
 		m_MeshList[i].Draw(*m_Shader);
 	}
@@ -1035,4 +1069,80 @@ void CGLProjectInRibbonView::InitDirectionlLighting()
 void CGLProjectInRibbonView::SetDrawingMode(int drawingMode)
 {
 	m_DrawingMode = drawingMode;
+}
+
+void CGLProjectInRibbonView::ConstructTree(int indexMeshWithMaxSDF)
+{
+	vector<bool> usedMesh(m_MeshGraph.size(), false);
+	m_MeshTree = new TreeNode(indexMeshWithMaxSDF);
+	HelperConstructTree(m_MeshTree, usedMesh);
+}
+
+void CGLProjectInRibbonView::HelperConstructTree(TreeNode* pTreeNode, vector<bool>& usedMesh)
+{
+	if (pTreeNode == nullptr) return;
+
+	usedMesh[pTreeNode->indexMesh] = true;
+
+	auto rowGraph = m_MeshGraph[pTreeNode->indexMesh];
+
+	for (int i = 0; i < rowGraph.size(); ++i)
+	{
+		if (rowGraph[i] == 1)
+		{
+			if (usedMesh[i]) continue;
+			else pTreeNode->childNodes.push_back(new TreeNode(i));
+		}
+	}
+
+	if (pTreeNode->childNodes.empty()) return;
+	else {
+		for (auto & node : pTreeNode->childNodes)
+		{
+			HelperConstructTree(node, usedMesh);
+		}
+	}
+}
+
+void CGLProjectInRibbonView::DeleteTree()
+{
+	if (m_MeshTree == nullptr) return;
+	if (m_MeshTree->childNodes.empty()) return;
+	HelperDeleteTree(m_MeshTree);
+	m_MeshTree = nullptr;
+}
+
+void CGLProjectInRibbonView::HelperDeleteTree(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr) return;
+	if (!pTreeNode->childNodes.empty())
+	{
+		for (auto & node : pTreeNode->childNodes)
+		{
+			HelperDeleteTree(node);
+		}
+	}
+	delete pTreeNode;
+}
+
+void CGLProjectInRibbonView::SimplifyWithDelete()
+{
+	if (m_MeshTree == nullptr) return;
+	HelperSimplifyWithDelete(m_MeshTree, 1);
+}
+
+void CGLProjectInRibbonView::HelperSimplifyWithDelete(TreeNode * pTreeNode, int k)
+{
+	if (pTreeNode == nullptr) return;
+	
+	if (k > 2)
+		m_MeshList[pTreeNode->indexMesh].SetDelete();
+
+	if (!pTreeNode->childNodes.empty())
+	{
+		for (auto & node : pTreeNode->childNodes)
+		{
+			HelperSimplifyWithDelete(node, k + 1);
+		}
+	}
 }
