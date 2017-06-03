@@ -54,9 +54,6 @@ public:
 	vector<Texture> textures;
 	Color color;
 
-	//Mesh Simplification Operator
-	bool deleted;
-
 	/* Functions */
 	//Constructor
 	Mesh();
@@ -64,11 +61,6 @@ public:
 	~Mesh();
 	//Render the mesh
 	void Draw(Shader shader);
-
-public:
-	void SetDelete();
-	bool isDeleted();
-
 private:
 	/* Render data */
 	GLuint VAO, VBO, EBO;

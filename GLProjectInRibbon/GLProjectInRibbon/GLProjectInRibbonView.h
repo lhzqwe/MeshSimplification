@@ -62,13 +62,6 @@ typedef CgalPolyhedron::Vertex_handle Vertex_handle;
 typedef CgalPolyhedron::Point Point;
 typedef CgalPolyhedron::Halfedge_handle Halfedge_handle;
 
-struct TreeNode {
-	TreeNode() {};
-	TreeNode(int pIndexMesh) : indexMesh(pIndexMesh) {};
-
-	int indexMesh;
-	vector<TreeNode *> childNodes;
-};
 
 class CGLProjectInRibbonView : public CView
 {
@@ -133,22 +126,11 @@ public:
 	Simplify m_Simplify;
 
 	vector<Model> m_ModelList;
-
-	//Mesh Segmentation
-	vector<vector<int>> m_MeshGraph;
-	TreeNode* m_MeshTree;
-
 // Operations
 public:
 	void GenerateColorList(vector<Color>& pColorList);
 	int GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor);
 	void SetupMeshList();
-	void ConstructTree(int indexMeshWithMaxSDF);
-	void HelperConstructTree(TreeNode* pTreeNode, vector<bool>& usedMesh);
-	void DeleteTree();
-	void HelperDeleteTree(TreeNode* pTreeNode);
-	void SimplifyWithDelete();
-	void HelperSimplifyWithDelete(TreeNode * pTreeNode, int k);
 
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);

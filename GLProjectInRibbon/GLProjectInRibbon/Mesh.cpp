@@ -4,7 +4,6 @@
 
 Mesh::Mesh()
 {
-	deleted = false;
 }
 
 Mesh::Mesh(vector<Vertex> vertices, vector<GLuint> indices, vector<Texture> textures)
@@ -12,8 +11,6 @@ Mesh::Mesh(vector<Vertex> vertices, vector<GLuint> indices, vector<Texture> text
 	this->vertices = vertices;
 	this->indices = indices;
 	this->textures = textures;
-
-	deleted = false;
 
 	//Now that we have all the required data, set vertex buffers and its attribute pointers.
 	this->setupMesh();
@@ -122,14 +119,4 @@ void Mesh::resetupMesh()
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, TexCoords));
 
 	glBindVertexArray(0);
-}
-
-void Mesh::SetDelete()
-{
-	deleted = true;
-}
-
-bool Mesh::isDeleted()
-{
-	return deleted;
 }
