@@ -32,6 +32,7 @@
 #include <CGAL/IO/Polyhedron_iostream.h>
 #include <CGAL/mesh_segmentation.h>
 #include <CGAL/property_map.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
 
 //System include
 #include <windows.h>
@@ -59,8 +60,12 @@ typedef CGAL::Polyhedron_3<Kernel,
 	CGAL::HalfedgeDS_list> CgalPolyhedron;
 typedef CgalPolyhedron::Halfedge_around_facet_circulator Halfedge_around_facet_circulator;
 typedef CgalPolyhedron::Vertex_handle Vertex_handle;
+typedef CgalPolyhedron::Facet_handle       Facet_handle;
 typedef CgalPolyhedron::Point Point;
 typedef CgalPolyhedron::Halfedge_handle Halfedge_handle;
+
+typedef std::map<CgalPolyhedron::Facet_const_handle, double> Facet_double_map;
+typedef std::map<CgalPolyhedron::Facet_const_handle, std::size_t> Facet_int_map;
 
 struct TreeNode {
 	TreeNode() {};
@@ -88,6 +93,7 @@ public:
 	GLText m_text;
 	//Model* m_Model_LOD;
 	vector<Mesh> m_MeshList;
+	Mesh m_CombinedMesh;
 
 	//CGAL Model
 	CgalPolyhedron m_Polyhedron;
@@ -135,6 +141,9 @@ public:
 	vector<Model> m_ModelList;
 
 	//Mesh Segmentation
+	Facet_double_map internal_sdf_map; //facet_handle -> sdf value
+	Facet_int_map internal_segment_map;//facet_handle -> mesh index
+
 	vector<vector<int>> m_MeshGraph;
 	TreeNode* m_MeshTree;
 
@@ -149,6 +158,9 @@ public:
 	void HelperDeleteTree(TreeNode* pTreeNode);
 	void SimplifyWithDelete();
 	void HelperSimplifyWithDelete(TreeNode * pTreeNode, int k);
+	void CombineMesh();
+	void RepairMeshHole();
+	void ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh, CgalPolyhedron & pPolyhedron);
 
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);

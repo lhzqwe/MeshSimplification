@@ -29,6 +29,8 @@
 #include "GL/GLU.H" // 已经包含GL.h
 #include "Resource.h"
 
+#include <map>
+
 // New codes end.
 // ////////////////////////////////////////////////////////////////
 
@@ -357,6 +359,8 @@ void CGLProjectInRibbonView::OnDestroy()
 	delete m_Model_LOD;
 	m_Model_LOD = nullptr;
 	}*/
+
+	DeleteTree();
 }
 
 
@@ -695,22 +699,94 @@ void CGLProjectInRibbonView::GetFPS(double deltaTime)
 
 void CGLProjectInRibbonView::OnMeshSegmentation()
 {
+	/*m_TestMesh.vertices.push_back(Vertex(glm::vec3(-1.5, 1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-1.5, -1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(1.5, -1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(1.5, 1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-0.5, -0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(0.5, -0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+	m_TestMesh.vertices.push_back(Vertex(glm::vec3(0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+
+	m_TestMesh.indices.push_back(0);
+	m_TestMesh.indices.push_back(1);
+	m_TestMesh.indices.push_back(4);
+
+	m_TestMesh.indices.push_back(4);
+	m_TestMesh.indices.push_back(1);
+	m_TestMesh.indices.push_back(5);
+
+	m_TestMesh.indices.push_back(5);
+	m_TestMesh.indices.push_back(1);
+	m_TestMesh.indices.push_back(6);
+
+	m_TestMesh.indices.push_back(6);
+	m_TestMesh.indices.push_back(1);
+	m_TestMesh.indices.push_back(2);
+
+	m_TestMesh.indices.push_back(7);
+	m_TestMesh.indices.push_back(6);
+	m_TestMesh.indices.push_back(2);
+
+	m_TestMesh.indices.push_back(7);
+	m_TestMesh.indices.push_back(2);
+	m_TestMesh.indices.push_back(3);
+
+	m_TestMesh.indices.push_back(3);
+	m_TestMesh.indices.push_back(4);
+	m_TestMesh.indices.push_back(7);
+
+	m_TestMesh.indices.push_back(0);
+	m_TestMesh.indices.push_back(4);
+	m_TestMesh.indices.push_back(3);
+
+	CgalPolyhedron tmpPolyhedron;
+	ConvertFromMeshToCgalPolyhedron(m_TestMesh, tmpPolyhedron);
+
+	unsigned int nb_holes = 0;
+	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
+	{
+	if (h->is_border())
+	{
+	vector<Facet_handle> patch_facets;
+	vector<Vertex_handle> patch_vertices;
+	bool success = CGAL::cpp11::get<0>(
+	CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+	tmpPolyhedron,
+	h,
+	back_inserter(patch_facets),
+	back_inserter(patch_vertices),
+	CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
+	cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+	cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+	cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+	++nb_holes;
+	}
+	}
+
+	cout << endl;
+	cout << nb_holes << "holes have been filled" << endl;
+	std::ofstream out("filledTmp.off");
+	out.precision(17);
+	out << tmpPolyhedron << endl;
+	*/
+	//..........................
+	//...........................
+	//...............................
+
+
+
 	// TODO:  在此添加命令处理程序代码
 	if (m_Polyhedron.empty())
 	{
 		MessageBox(_T("m_Polyhedron is empty."));
 		return;
 	}
-
 	// create a property-map for SDF values
-	typedef std::map<CgalPolyhedron::Facet_const_handle, double> Facet_double_map;
-	Facet_double_map internal_sdf_map;
 	boost::associative_property_map<Facet_double_map> sdf_property_map(internal_sdf_map);
 	// compute SDF values using default parameters for number of rays, and cone angle
 	CGAL::sdf_values(m_Polyhedron, sdf_property_map);
 	// create a property-map for segment-ids
-	typedef std::map<CgalPolyhedron::Facet_const_handle, std::size_t> Facet_int_map;
-	Facet_int_map internal_segment_map;
 	boost::associative_property_map<Facet_int_map> segment_property_map(internal_segment_map);
 	// segment the mesh using default parameters for number of levels, and smoothing lambda
 	// Any other scalar values can be used instead of using SDF values computed using the CGAL function
@@ -788,6 +864,46 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	//construct tree
 	ConstructTree(indexMaxSDF);
 	SimplifyWithDelete();
+
+	//m_MeshList[0].SetDelete();
+
+	CombineMesh();
+
+#pragma region Test Hole
+
+	CgalPolyhedron tmpPolyhedron;
+	ConvertFromMeshToCgalPolyhedron(m_CombinedMesh, tmpPolyhedron);
+
+	unsigned int nb_holes = 0;
+	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
+	{
+		if (h->is_border())
+		{
+			vector<Facet_handle> patch_facets;
+			vector<Vertex_handle> patch_vertices;
+			bool success = CGAL::cpp11::get<0>(
+				CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+				tmpPolyhedron,
+				h,
+				back_inserter(patch_facets),
+				back_inserter(patch_vertices),
+				CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
+			cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+			cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+			cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+			++nb_holes;
+		}
+	}
+
+	cout << endl;
+	cout << nb_holes << "holes have been filled" << endl;
+	std::ofstream out("filledTmp.off");
+	out.precision(17);
+	out << tmpPolyhedron << endl;
+
+#pragma endregion Test Hole
+
+	RepairMeshHole();
 
 	//Set Color
 	assert(m_MeshList.size() == colorList.size());
@@ -1143,6 +1259,91 @@ void CGLProjectInRibbonView::HelperSimplifyWithDelete(TreeNode * pTreeNode, int 
 		for (auto & node : pTreeNode->childNodes)
 		{
 			HelperSimplifyWithDelete(node, k + 1);
+		}
+	}
+}
+
+void CGLProjectInRibbonView::RepairMeshHole()
+{
+	int fileIndex = 0;
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		if (!m_MeshList[i].isDeleted())
+		{
+			//Mesh contain duplicate points
+			CgalPolyhedron needRepairedPolyhedron;
+			ConvertFromMeshToCgalPolyhedron(m_MeshList[i], needRepairedPolyhedron);
+
+			unsigned int nb_holes = 0;
+			BOOST_FOREACH(Halfedge_handle h, halfedges(needRepairedPolyhedron))
+			{
+				if (h->is_border())
+				{
+					vector<Facet_handle> patch_facets;
+					vector<Vertex_handle> patch_vertices;
+					bool success = CGAL::cpp11::get<0>(
+						CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+						needRepairedPolyhedron,
+						h,
+						back_inserter(patch_facets),
+						back_inserter(patch_vertices),
+						CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, needRepairedPolyhedron)).geom_traits(Kernel())));
+					cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+					cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+					cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+					++nb_holes;
+				}
+			}
+
+			cout << endl;
+			cout << nb_holes << "holes have been filled" << endl;
+			std::ofstream out("filled" + to_string(fileIndex) + ".off");
+			out.precision(17);
+			out << needRepairedPolyhedron << endl;
+
+			fileIndex++;
+		}
+	}
+	
+}
+
+void CGLProjectInRibbonView::ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh, CgalPolyhedron & pPolyhedron)
+{
+	assert(pMesh.vertices.size() != 0);
+	assert(pMesh.indices.size() != 0);
+	
+	SMeshLib::IO::importFromMesh(pMesh, &pPolyhedron);
+}
+
+void CGLProjectInRibbonView::CombineMesh()
+{
+	m_CombinedMesh.vertices.clear();
+	m_CombinedMesh.indices.clear();
+	m_CombinedMesh.textures.clear();
+
+	map<tuple<float, float, float>, int> mp;
+
+	for (int meshIndex = 0; meshIndex < m_MeshList.size(); ++meshIndex)
+	{
+		if (!m_MeshList[meshIndex].deleted)
+		{
+			for (const auto & indice : m_MeshList[meshIndex].indices)
+			{
+				auto v = m_MeshList[meshIndex].vertices[indice];
+				auto tp = make_tuple(v.Position.x, v.Position.y, v.Position.z);
+				if (mp.count(tp) > 0)
+				{
+					m_CombinedMesh.indices.push_back(mp[tp]);
+				}
+				else
+				{
+					m_CombinedMesh.vertices.push_back(Vertex(glm::vec3(get<0>(tp), get<1>(tp), get<2>(tp)), glm::vec3(0, 0, 0), glm::vec2(0, 0)));
+					m_CombinedMesh.indices.push_back(m_CombinedMesh.vertices.size() - 1);
+
+					mp.insert({ tp, m_CombinedMesh.vertices.size() - 1 });
+				}
+			}
+
 		}
 	}
 }

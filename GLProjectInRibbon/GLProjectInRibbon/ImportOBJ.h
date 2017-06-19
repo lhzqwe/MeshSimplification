@@ -112,7 +112,50 @@ namespace SMeshLib {
 
 			std::string mFileName;
 		};
+		
+		template<class HDS>
+		class BuildCgalPolyhedronFromMesh : public CGAL::Modifier_base<HDS>
+		{
+		public:
 
+			BuildCgalPolyhedronFromMesh(const Mesh& pMesh) : m_Mesh(pMesh.vertices, pMesh.indices, pMesh.textures){}
+
+			void operator() (HDS& hds)
+			{
+				typedef typename HDS::Vertex   Vertex;
+				typedef typename Vertex::Point Point;
+				// Count the number of vertices and facets.
+				// This is used to reserve memory in HDS.
+				int _numVertices = m_Mesh.vertices.size();
+				int _numFacets = m_Mesh.indices.size() / 3;
+
+				// Postcondition: hds is a valid polyhedral surface.
+				CGAL::Polyhedron_incremental_builder_3<HDS> B(hds, true);
+
+				// Load the data from OBJ file to HDS.
+				B.begin_surface(_numVertices, _numFacets, int((_numVertices + _numFacets - 2)*2.1));
+				
+				for (int i = 0; i < m_Mesh.vertices.size(); ++i)
+				{
+					auto pos = m_Mesh.vertices[i].Position;
+					B.add_vertex(Point(pos.x, pos.y, pos.z));
+				}
+
+				for (int i = 0; i < m_Mesh.indices.size(); i += 3)
+				{
+					B.begin_facet();
+					B.add_vertex_to_facet(m_Mesh.indices[i]);
+					B.add_vertex_to_facet(m_Mesh.indices[i + 1]);
+					B.add_vertex_to_facet(m_Mesh.indices[i + 2]);
+					B.end_facet();
+				}
+
+				B.end_surface();
+			}
+
+		private:
+			Mesh m_Mesh;
+		};
 
 		// Import a OBJ file given by fileName to polyhedron.
 		// TPoly is a type of CGAL::Polyhdeon_3.
@@ -147,6 +190,39 @@ namespace SMeshLib {
 				}
 			}
 		}
+
+		template<class TPoly>
+		void importFromMesh(const Mesh& pMesh, TPoly* polyhedron)
+		{
+			if (polyhedron)
+			{
+				try
+				{
+					// Build Polyhedron_3 from the OBJ file.
+					BuildCgalPolyhedronFromMesh<TPoly::HalfedgeDS> _buildPolyhedron(pMesh);
+
+					// Calls is_valid at the end. Throws an exception in debug mode if polyhedron is not
+					// manifold.
+					polyhedron->delegate(_buildPolyhedron);
+
+					// CGAL::Assert_exception is thrown in the debug mode when 
+					// CGAL::Polyhedron_incremental_builder_3 is destroyed in BuildCgalPolyhedronFromObj.
+					// However, in the release mode assertions is disabled and hence no exception is thrown.
+					// Thus for uniform error reporting, if the polyhedron is not valid then throw a dummy 
+					// exception in release mode.
+					if (!polyhedron->is_valid())
+					{
+						throw CGAL::Assertion_exception("", "", "", 0, "");
+					}
+				}
+				catch (const CGAL::Assertion_exception&)
+				{
+					std::string _msg = "SMeshLib::importOBJ: Error loading mesh";
+					throw std::exception(_msg.c_str());
+				}
+			}
+		}
+
 
 	};	// End namespace IO.
 };	// End namespace SMeshLib.
