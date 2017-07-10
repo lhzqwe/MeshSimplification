@@ -67,6 +67,8 @@ public:
 
 public:
 	void SetDelete();
+	void SetExist();
+
 	bool isDeleted();
 
 private:

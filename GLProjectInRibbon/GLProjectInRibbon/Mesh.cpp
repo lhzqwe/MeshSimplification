@@ -129,6 +129,11 @@ void Mesh::SetDelete()
 	deleted = true;
 }
 
+void Mesh::SetExist()
+{
+	deleted = false;
+}
+
 bool Mesh::isDeleted()
 {
 	return deleted;

@@ -22,6 +22,11 @@
 #include "GLText.h"
 #include "ImportOBJ.h"
 #include "Color.h"
+#include "Log.h"
+
+//Standard include
+#include <map>
+
 //CGAL include
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Polyhedron_items_3.h>
@@ -33,6 +38,12 @@
 #include <CGAL/mesh_segmentation.h>
 #include <CGAL/property_map.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
+
+//Simplification function
+#include <CGAL/Surface_mesh_simplification/edge_collapse.h>
+#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Midpoint_placement.h>
+#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Constrained_placement.h>
+#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
 
 //System include
 #include <windows.h>
@@ -52,6 +63,9 @@
 //Drawing Mode
 #define DRAW_NORMAL 1
 #define DRAW_MESHSEGMENTATION 2
+#define DRAW_SIMPLIFIEDMESH 3
+#define DRAW_FLAT 4
+#define DRAW_SMOOTH 5
 
 //CGAL Data Structure
 typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
@@ -66,6 +80,35 @@ typedef CgalPolyhedron::Halfedge_handle Halfedge_handle;
 
 typedef std::map<CgalPolyhedron::Facet_const_handle, double> Facet_double_map;
 typedef std::map<CgalPolyhedron::Facet_const_handle, std::size_t> Facet_int_map;
+
+//Simplification needed
+typedef CGAL::Simple_cartesian<double> SimpKernel;
+typedef SimpKernel::Point_3 Point_3;
+typedef CGAL::Polyhedron_3<SimpKernel> Surface_mesh;
+
+namespace SMS = CGAL::Surface_mesh_simplification;
+
+//
+// BGL property map which indicates whether an edge is marked as non-removable
+//
+struct Border_is_constrained_edge_map{
+	const Surface_mesh* sm_ptr;
+	typedef boost::graph_traits<Surface_mesh>::edge_descriptor key_type;
+	typedef bool value_type;
+	typedef value_type reference;
+	typedef boost::readable_property_map_tag category;
+	Border_is_constrained_edge_map(const Surface_mesh& sm)
+		: sm_ptr(&sm)
+	{}
+	friend bool get(Border_is_constrained_edge_map m, const key_type& edge) {
+		return CGAL::is_border(edge, *m.sm_ptr);
+	}
+};
+//
+// Placement class
+//
+typedef SMS::Constrained_placement<SMS::Midpoint_placement<Surface_mesh>,
+	Border_is_constrained_edge_map > Placement;
 
 struct TreeNode {
 	TreeNode() {};
@@ -92,8 +135,7 @@ public:
 	Camera* m_Camera;
 	GLText m_text;
 	//Model* m_Model_LOD;
-	vector<Mesh> m_MeshList;
-	Mesh m_CombinedMesh;
+
 
 	//CGAL Model
 	CgalPolyhedron m_Polyhedron;
@@ -134,7 +176,6 @@ public:
 
 	bool isCameraAdjusted;
 
-	int m_DrawingMode;
 
 	Simplify m_Simplify;
 
@@ -143,15 +184,35 @@ public:
 	//Mesh Segmentation
 	Facet_double_map internal_sdf_map; //facet_handle -> sdf value
 	Facet_int_map internal_segment_map;//facet_handle -> mesh index
+	std::size_t number_of_segments;
 
 	vector<vector<int>> m_MeshGraph;
+	int m_IndexMaxSDF = 0;
 	TreeNode* m_MeshTree;
 
+	//Mesh For Display
+	Mesh* m_pFlatMesh;
+	Mesh* m_pSmoothMesh;
+
+	int m_DrawingMode;
+
+	//Mesh Cache
+	Mesh m_CombinedMesh;
+
+	Mesh m_NormalMesh;
+	vector<Mesh> m_MeshList; //For Segmentation
+	Mesh m_SimplifiedMesh;
+
+	//Log System
+	Log m_Log;
 // Operations
 public:
+	Mesh GenerateFlatMesh(Mesh & pMesh);
 	void GenerateColorList(vector<Color>& pColorList);
 	int GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor);
 	void SetupMeshList();
+	void SetupMesh(Mesh & pMesh);
+	void SetupSimplifiedMesh();
 	void ConstructTree(int indexMeshWithMaxSDF);
 	void HelperConstructTree(TreeNode* pTreeNode, vector<bool>& usedMesh);
 	void DeleteTree();
@@ -159,13 +220,18 @@ public:
 	void SimplifyWithDelete();
 	void HelperSimplifyWithDelete(TreeNode * pTreeNode, int k);
 	void CombineMesh();
+	void CombineTheMesh(int meshIndex);
 	void RepairMeshHole();
 	void ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh, CgalPolyhedron & pPolyhedron);
+	void ConvertFromMeshToSurfaceMeshPolyhedron(const Mesh & pMesh, Surface_mesh & pSurfaceMesh);
+	void ClearMeshSegmentationDeleteState();
 
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);
 	void CalculateFocusPoint(Model * pModel);
+	void CalculateFocusPoint(const Mesh& pMesh);
 	void AdjustCameraView(const vector<Mesh>& pMeshList);
+	void AdjustCameraView(const Mesh& pMesh);
 	void AdjustCameraView(Model * pModel);
 	void DragBall(GLfloat ax, GLfloat ay, GLfloat bx, GLfloat by, GLfloat r);
 	void SimplifyInitialization(Model& model, Simplify& simplify);
@@ -182,8 +248,13 @@ public:
 
 	void DrawTextInfo();
 	void DrawModel();
+	void DrawMesh(int drawMode);
+	void DrawMesh(Mesh& pMesh);
 	void DrawModelInNormalMode();
 	void DrawModelSegmentation();
+	void DrawSimplifiedModel();
+	void DrawFlatMesh();
+	void DrawSmoothMesh();
 	void TimeEnd();
 	void TimeStart();
 	void InitMaterial(Color& pColor);
@@ -232,6 +303,13 @@ public:
 	afx_msg void OnQemoperation();
 	afx_msg void OnLoddisplay();
 	afx_msg void OnMeshSegmentation();
+	afx_msg void OnNormalDisplay();
+	afx_msg void OnSegmentationDisplay();
+	afx_msg void OnSimplifiedDisplay();
+	afx_msg void OnDeleteSimp();
+	afx_msg void OnSerializeWrite();
+	afx_msg void OnSerializeRead();
+	afx_msg void OnQuadricSimp();
 };
 
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp

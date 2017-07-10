@@ -34,6 +34,8 @@
 // New codes end.
 // ////////////////////////////////////////////////////////////////
 
+#define MIDDLE_PROCESS
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -65,6 +67,13 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_QEMOPERATION, &CGLProjectInRibbonView::OnQemoperation)
 	ON_COMMAND(ID_LODDISPLAY, &CGLProjectInRibbonView::OnLoddisplay)
 	ON_COMMAND(ID_BUTTON2, &CGLProjectInRibbonView::OnMeshSegmentation)
+	ON_COMMAND(ID_BUTTON4, &CGLProjectInRibbonView::OnNormalDisplay)
+	ON_COMMAND(ID_BUTTON5, &CGLProjectInRibbonView::OnSegmentationDisplay)
+	ON_COMMAND(ID_BUTTON6, &CGLProjectInRibbonView::OnSimplifiedDisplay)
+	ON_COMMAND(ID_DELETESIMP, &CGLProjectInRibbonView::OnDeleteSimp)
+	ON_COMMAND(ID_SERIALIZE_WRITE, &CGLProjectInRibbonView::OnSerializeWrite)
+	ON_COMMAND(ID_SERIALIZE_READ, &CGLProjectInRibbonView::OnSerializeRead)
+	ON_COMMAND(ID_QUADRICSIMP, &CGLProjectInRibbonView::OnQuadricSimp)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -203,6 +212,12 @@ void CGLProjectInRibbonView::OnOpenbutton()
 	assert(!m_Polyhedron.empty());
 	
 	AdjustCameraView(m_Model);
+
+	auto meshes = m_Model->getModelMeshes();
+	m_NormalMesh = GenerateFlatMesh(meshes[0]);
+
+	OnNormalDisplay();
+
 	Invalidate(TRUE);
 }
 
@@ -283,6 +298,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	//Init Shader
 	m_Shader = new Shader("Shader/normal.vert", "Shader/normal.frag");
+	//m_Shader = new Shader("Shader/normal_vShading.vert", "Shader/normal_vShading.frag");
 	m_TextShader = new Shader("text.vs", "text.frag");
 	m_Camera = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 	m_Model = nullptr;
@@ -303,9 +319,14 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_ScreenWidth = 1024;
 	m_ScreenHeight = 1024;
 
-	m_DrawingMode = 1;
+	m_DrawingMode = DRAW_SMOOTH;
 
 	isCameraAdjusted = false;
+
+	m_pFlatMesh = nullptr;
+	m_pSmoothMesh = nullptr;
+
+
 
 	// New codes end.
 	// ////////////////////////////////////////////////////////////////
@@ -352,6 +373,18 @@ void CGLProjectInRibbonView::OnDestroy()
 	{
 		delete m_Camera;
 		m_Camera = nullptr;
+	}
+
+	if (m_pFlatMesh != nullptr)
+	{
+		delete m_pFlatMesh;
+		m_pFlatMesh = nullptr;
+	}
+
+	if (m_pSmoothMesh != nullptr)
+	{
+		delete m_pSmoothMesh;
+		m_pSmoothMesh = nullptr;
 	}
 
 	/*if (m_Model_LOD != nullptr)
@@ -699,83 +732,6 @@ void CGLProjectInRibbonView::GetFPS(double deltaTime)
 
 void CGLProjectInRibbonView::OnMeshSegmentation()
 {
-	/*m_TestMesh.vertices.push_back(Vertex(glm::vec3(-1.5, 1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-1.5, -1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(1.5, -1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(1.5, 1.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(-0.5, -0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(0.5, -0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-	m_TestMesh.vertices.push_back(Vertex(glm::vec3(0.5, 0.5, 0.0), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
-
-	m_TestMesh.indices.push_back(0);
-	m_TestMesh.indices.push_back(1);
-	m_TestMesh.indices.push_back(4);
-
-	m_TestMesh.indices.push_back(4);
-	m_TestMesh.indices.push_back(1);
-	m_TestMesh.indices.push_back(5);
-
-	m_TestMesh.indices.push_back(5);
-	m_TestMesh.indices.push_back(1);
-	m_TestMesh.indices.push_back(6);
-
-	m_TestMesh.indices.push_back(6);
-	m_TestMesh.indices.push_back(1);
-	m_TestMesh.indices.push_back(2);
-
-	m_TestMesh.indices.push_back(7);
-	m_TestMesh.indices.push_back(6);
-	m_TestMesh.indices.push_back(2);
-
-	m_TestMesh.indices.push_back(7);
-	m_TestMesh.indices.push_back(2);
-	m_TestMesh.indices.push_back(3);
-
-	m_TestMesh.indices.push_back(3);
-	m_TestMesh.indices.push_back(4);
-	m_TestMesh.indices.push_back(7);
-
-	m_TestMesh.indices.push_back(0);
-	m_TestMesh.indices.push_back(4);
-	m_TestMesh.indices.push_back(3);
-
-	CgalPolyhedron tmpPolyhedron;
-	ConvertFromMeshToCgalPolyhedron(m_TestMesh, tmpPolyhedron);
-
-	unsigned int nb_holes = 0;
-	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
-	{
-	if (h->is_border())
-	{
-	vector<Facet_handle> patch_facets;
-	vector<Vertex_handle> patch_vertices;
-	bool success = CGAL::cpp11::get<0>(
-	CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
-	tmpPolyhedron,
-	h,
-	back_inserter(patch_facets),
-	back_inserter(patch_vertices),
-	CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
-	cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
-	cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
-	cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
-	++nb_holes;
-	}
-	}
-
-	cout << endl;
-	cout << nb_holes << "holes have been filled" << endl;
-	std::ofstream out("filledTmp.off");
-	out.precision(17);
-	out << tmpPolyhedron << endl;
-	*/
-	//..........................
-	//...........................
-	//...............................
-
-
-
 	// TODO:  在此添加命令处理程序代码
 	if (m_Polyhedron.empty())
 	{
@@ -794,7 +750,7 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	const double smoothing_lambda = 0.1; // importance of surface features, suggested to be in-between [0,1]
 	// Note that we can use the same SDF values (sdf_property_map) over and over again for segmentation.
 	// This feature is relevant for segmenting the mesh several times with different parameters.
-	std::size_t number_of_segments = CGAL::segmentation_from_sdf_values(m_Polyhedron, sdf_property_map, segment_property_map, number_of_clusters, smoothing_lambda);
+	number_of_segments = CGAL::segmentation_from_sdf_values(m_Polyhedron, sdf_property_map, segment_property_map, number_of_clusters, smoothing_lambda);
 	//std::cout << "Number of segments: " << number_of_segments << std::endl;
 	
 	vector<Color> colorList;
@@ -803,20 +759,20 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	GenerateUniqueColorList(number_of_segments, colorList, excludedColor);
 	m_MeshList.resize(number_of_segments);
 
-	double maxSDF = DOUBLE_MIN;
-	int indexMaxSDF = -1;
-	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
-		facet_it != m_Polyhedron.facets_end(); ++facet_it)
-	{
-		if (internal_sdf_map[facet_it] > maxSDF)
-		{
-			maxSDF = internal_sdf_map[facet_it];
-			indexMaxSDF = internal_segment_map[facet_it];
-		}
-	}
-
-	//m_MeshList[indexMaxSDF].SetDelete();
-
+//	double maxSDF = DOUBLE_MIN;
+//	int indexMaxSDF = -1;
+//	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
+//		facet_it != m_Polyhedron.facets_end(); ++facet_it)
+//	{
+//		if (internal_sdf_map[facet_it] > maxSDF)
+//		{
+//			maxSDF = internal_sdf_map[facet_it];
+//			indexMaxSDF = internal_segment_map[facet_it];
+//		}
+//	}
+//
+//	//m_MeshList[indexMaxSDF].SetDelete();
+//
 	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
 		facet_it != m_Polyhedron.facets_end(); ++facet_it)
 	{
@@ -847,63 +803,100 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 		m_MeshList[meshIndex].vertices[lastIndex - 1].Normal = vNormal;
 		m_MeshList[meshIndex].vertices[lastIndex - 2].Normal = vNormal;
 	}
-	
-	//TO DO : mesh simplification
-	//adjacent graph
-	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
+//	
+//	//TO DO : mesh simplification
+//	//adjacent graph
+//	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
+//
+//	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
+//		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
+//	{
+//		int indexMesh = segment_property_map[halfedge_it->facet()];
+//		int indexOppositeMesh = segment_property_map[halfedge_it->opposite()->facet()];
+//		if (indexMesh == indexOppositeMesh) continue;
+//		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
+//	}
+//
+//	//construct tree
+//	ConstructTree(indexMaxSDF);
+//	SimplifyWithDelete();
+//
+//	//m_MeshList[0].SetDelete();
+//
+//	CombineMesh();
+//
+//#pragma region Test Hole
+//
+//	CgalPolyhedron tmpPolyhedron;
+//	ConvertFromMeshToCgalPolyhedron(m_CombinedMesh, tmpPolyhedron);
+//
+//	unsigned int nb_holes = 0;
+//	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
+//	{
+//		if (h->is_border())
+//		{
+//			vector<Facet_handle> patch_facets;
+//			vector<Vertex_handle> patch_vertices;
+//			bool success = CGAL::cpp11::get<0>(
+//				CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+//				tmpPolyhedron,
+//				h,
+//				back_inserter(patch_facets),
+//				back_inserter(patch_vertices),
+//				CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
+//			cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+//			cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+//			cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+//			++nb_holes;
+//		}
+//	}
+//
+//	cout << endl;
+//	cout << nb_holes << "holes have been filled" << endl;
+//	std::ofstream out("filledTmp.off");
+//	out.precision(17);
+//	out << tmpPolyhedron << endl;
+//
+//	//Extract mesh from simplified polyhedron
+//	m_SimplifiedMesh.vertices.clear();
+//	m_SimplifiedMesh.indices.clear();
+//	m_SimplifiedMesh.textures.clear();
+//
+//	//Simplified Flat Mesh
+//	for (CgalPolyhedron::Facet_iterator facet_it = tmpPolyhedron.facets_begin();
+//		facet_it != tmpPolyhedron.facets_end(); ++facet_it)
+//	{
+//		int verticeIndex = m_SimplifiedMesh.vertices.size();
+//		int indiceIndex = m_SimplifiedMesh.indices.size();
+//		Halfedge_around_facet_circulator hec = facet_it->facet_begin();// get half edge handle
+//		Halfedge_handle he_begin = hec;
+//		Vertex_handle v;
+//		vector<glm::vec3> points;//points for calculate normals
+//		do
+//		{
+//			v = hec->vertex();
+//			Point p = v->point();
+//			m_SimplifiedMesh.vertices.push_back(Vertex(glm::vec3(p.x(), p.y(), p.z()), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+//			m_SimplifiedMesh.indices.push_back(indiceIndex);
+//			points.push_back(glm::vec3(p.x(), p.y(), p.z()));
+//			++indiceIndex;
+//			++hec;
+//		} while (he_begin != hec);
+//		//calculate normals
+//		assert(points.size() == 3);
+//		glm::vec3 v1 = points[1] - points[0];
+//		glm::vec3 v2 = points[2] - points[1];
+//		glm::vec3 vNormal = glm::cross(v1, v2);
+//		int lastIndex = m_SimplifiedMesh.vertices.size() - 1;
+//		m_SimplifiedMesh.vertices[lastIndex].Normal = vNormal;
+//		m_SimplifiedMesh.vertices[lastIndex - 1].Normal = vNormal;
+//		m_SimplifiedMesh.vertices[lastIndex - 2].Normal = vNormal;
+//	}
+//
+//
+//#pragma endregion Test Hole
 
-	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
-		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
-	{
-		int indexMesh = segment_property_map[halfedge_it->facet()];
-		int indexOppositeMesh = segment_property_map[halfedge_it->opposite()->facet()];
-		if (indexMesh == indexOppositeMesh) continue;
-		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
-	}
-
-	//construct tree
-	ConstructTree(indexMaxSDF);
-	SimplifyWithDelete();
-
-	//m_MeshList[0].SetDelete();
-
-	CombineMesh();
-
-#pragma region Test Hole
-
-	CgalPolyhedron tmpPolyhedron;
-	ConvertFromMeshToCgalPolyhedron(m_CombinedMesh, tmpPolyhedron);
-
-	unsigned int nb_holes = 0;
-	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
-	{
-		if (h->is_border())
-		{
-			vector<Facet_handle> patch_facets;
-			vector<Vertex_handle> patch_vertices;
-			bool success = CGAL::cpp11::get<0>(
-				CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
-				tmpPolyhedron,
-				h,
-				back_inserter(patch_facets),
-				back_inserter(patch_vertices),
-				CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
-			cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
-			cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
-			cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
-			++nb_holes;
-		}
-	}
-
-	cout << endl;
-	cout << nb_holes << "holes have been filled" << endl;
-	std::ofstream out("filledTmp.off");
-	out.precision(17);
-	out << tmpPolyhedron << endl;
-
-#pragma endregion Test Hole
-
-	RepairMeshHole();
+	//RepairMeshHole();
 
 	//Set Color
 	assert(m_MeshList.size() == colorList.size());
@@ -918,11 +911,83 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	m_ScreenWidth = rect.Width();
 	m_ScreenHeight = rect.Height();
 
-	SetupMeshList();
-	AdjustCameraView(m_MeshList);
-	SetDrawingMode(DRAW_MESHSEGMENTATION);
+	OnSegmentationDisplay();
+}
 
-	Invalidate();
+void CGLProjectInRibbonView::SetupSimplifiedMesh()
+{
+	assert(!m_SimplifiedMesh.vertices.empty());
+	assert(!m_SimplifiedMesh.indices.empty());
+
+	m_SimplifiedMesh.setupMesh();
+}
+
+void CGLProjectInRibbonView::AdjustCameraView(const Mesh& pMesh)
+{
+	CalculateFocusPoint(pMesh);
+	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	this->bodyDiagnalLength = bodyDiagonal;
+	m_Camera->SetPosition(0.0f, 0.0f, 2.0f * bodyDiagonal);
+	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2);
+	m_Camera->SetUp(0.0f, 1.0f, 0.0f);
+	m_ProjectionMatrix = glm::perspective(45.0f, (float)m_ScreenWidth / (float)m_ScreenHeight, 10.0f, bodyDiagonal * 10);
+}
+
+void CGLProjectInRibbonView::CalculateFocusPoint(const Mesh& pMesh)
+{
+	double xMin = DOUBLE_MAX, xMax = DOUBLE_MIN;
+	double yMin = DOUBLE_MAX, yMax = DOUBLE_MIN;
+	double zMin = DOUBLE_MAX, zMax = DOUBLE_MIN;
+
+	for (const auto & i : pMesh.vertices)
+	{
+		if (i.Position.x < xMin) xMin = i.Position.x;
+		if (i.Position.x > xMax) xMax = i.Position.x;
+		if (i.Position.y < yMin) yMin = i.Position.y;
+		if (i.Position.y > yMax) yMax = i.Position.y;
+		if (i.Position.z < zMin) zMin = i.Position.z;
+		if (i.Position.z > zMax) zMax = i.Position.z;
+	}
+	m_FocusPoint = glm::vec3((xMin + xMax) / 2.0, (yMin + yMax) / 2.0, (zMin + zMax) / 2.0);
+
+	this->xMin = xMin;
+	this->xMax = xMax;
+	this->yMin = yMin;
+	this->yMax = yMax;
+	this->zMin = zMin;
+	this->zMax = zMax;
+	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	this->bodyDiagnalLength = bodyDiagonal;
+}
+
+Mesh CGLProjectInRibbonView::GenerateFlatMesh(Mesh & pMesh)
+{
+	assert(!pMesh.vertices.empty());
+	assert(!pMesh.indices.empty());
+
+	Mesh result;
+
+	auto points = pMesh.vertices;
+	auto indices = pMesh.indices;
+	glm::vec3 n;
+	for (int i = 0, indice = 0; i < indices.size(); i += 3, indice += 3)
+	{
+		result.vertices.push_back(points[indices[i]]);
+		result.vertices.push_back(points[indices[i + 1]]);
+		result.vertices.push_back(points[indices[i + 2]]);
+
+		result.indices.push_back(indice);
+		result.indices.push_back(indice + 1);
+		result.indices.push_back(indice + 2);
+
+		n = glm::cross(points[indices[i + 1]].Position - points[indices[i]].Position, points[indices[i + 2]].Position - points[indices[i + 1]].Position);
+		
+		result.vertices[indice].Normal = n;
+		result.vertices[indice + 1].Normal = n;
+		result.vertices[indice + 2].Normal = n;
+	}
+
+	return result;
 }
 
 void CGLProjectInRibbonView::GenerateColorList(vector<Color>& pColorList)
@@ -1040,6 +1105,22 @@ void CGLProjectInRibbonView::SetupMeshList()
 	}
 }
 
+void CGLProjectInRibbonView::ClearMeshSegmentationDeleteState()
+{
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		m_MeshList[i].SetExist();
+	}
+}
+
+void CGLProjectInRibbonView::SetupMesh(Mesh & pMesh)
+{
+	assert(!pMesh.vertices.empty());
+	assert(!pMesh.indices.empty());
+
+	pMesh.setupMesh();
+}
+
 void CGLProjectInRibbonView::GLSetRenderState()
 {
 	glViewport(0, 0, m_ScreenWidth, m_ScreenHeight);
@@ -1055,6 +1136,7 @@ void CGLProjectInRibbonView::GLSetRenderState()
 	{
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
+
 }
 
 void CGLProjectInRibbonView::TimeStart()
@@ -1070,36 +1152,65 @@ void CGLProjectInRibbonView::TimeEnd()
 	GetFPS(frametime);
 }
 
-void CGLProjectInRibbonView::DrawModel()
+void CGLProjectInRibbonView::DrawMesh(int drawMode)
 {
-	if (m_DrawingMode == DRAW_NORMAL)
+	if (drawMode == DRAW_NORMAL)
 	{
-		DrawModelInNormalMode();
+		DrawMesh(m_NormalMesh);
 	}
-	else if (m_DrawingMode == DRAW_MESHSEGMENTATION)
+	else if (drawMode == DRAW_MESHSEGMENTATION)
 	{
 		DrawModelSegmentation();
 	}
+	else if (drawMode == DRAW_SIMPLIFIEDMESH)
+	{
+		DrawMesh(m_SimplifiedMesh);
+	}
+}
 
-	//m_Shader->Use();
-	//// Transformation matrices
-	//m_ProjectionMatrix = glm::perspective(m_Camera->Zoom, (float)m_ScreenWidth / (float)m_ScreenHeight, 1.0f, bodyDiagnalLength * 10);
-	//m_ViewMatrix = m_Camera->GetViewMatrix();
-	//glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "projection"), 1, GL_FALSE, glm::value_ptr(m_ProjectionMatrix));
-	//glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "view"), 1, GL_FALSE, glm::value_ptr(m_ViewMatrix));
-	//// Draw the loaded model
-	//m_ModelMatrix = glm::mat4(1.0);
-	//m_ModelMatrix = m_RotationMatrix;
-	//m_ModelMatrix = glm::scale(m_ModelMatrix, glm::vec3(modelScale));
-	//m_ModelMatrix = glm::translate(m_ModelMatrix, glm::vec3(-m_FocusPoint.x, -m_FocusPoint.y, -m_FocusPoint.z)); // Translate it down a bit so it's at the center of the scene
-	//glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
+void CGLProjectInRibbonView::DrawMesh(Mesh& pMesh)
+{
+	m_Shader->Use();
+	// Transformation matrices
+	m_ProjectionMatrix = glm::perspective(m_Camera->Zoom, (float)m_ScreenWidth / (float)m_ScreenHeight, 1.0f, bodyDiagnalLength * 10);
+	m_ViewMatrix = m_Camera->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "projection"), 1, GL_FALSE, glm::value_ptr(m_ProjectionMatrix));
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "view"), 1, GL_FALSE, glm::value_ptr(m_ViewMatrix));
+	// Draw the loaded model
+	m_ModelMatrix = glm::mat4(1.0);
+	m_ModelMatrix = m_RotationMatrix;
+	m_ModelMatrix = glm::scale(m_ModelMatrix, glm::vec3(modelScale));
+	m_ModelMatrix = glm::translate(m_ModelMatrix, glm::vec3(-m_FocusPoint.x, -m_FocusPoint.y, -m_FocusPoint.z)); // Translate it down a bit so it's at the center of the scene
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
 
-	////Draw Objects....................................
-	//for (int i = 0; i < m_MeshList.size(); ++i)
-	//{
-	//	InitMaterial(m_MeshList[i].color);
-	//	m_MeshList[i].Draw(*m_Shader);
-	//}
+	Color normalColor(1.0f, 1.0f, 1.0f);
+	InitMaterial(normalColor);
+	pMesh.Draw(*m_Shader);
+}
+
+void CGLProjectInRibbonView::DrawModel()
+{
+	DrawMesh(m_DrawingMode);
+}
+
+void CGLProjectInRibbonView::DrawSimplifiedModel()
+{
+	m_Shader->Use();
+	// Transformation matrices
+	m_ProjectionMatrix = glm::perspective(m_Camera->Zoom, (float)m_ScreenWidth / (float)m_ScreenHeight, 1.0f, bodyDiagnalLength * 10);
+	m_ViewMatrix = m_Camera->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "projection"), 1, GL_FALSE, glm::value_ptr(m_ProjectionMatrix));
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "view"), 1, GL_FALSE, glm::value_ptr(m_ViewMatrix));
+	// Draw the loaded model
+	m_ModelMatrix = glm::mat4(1.0);
+	m_ModelMatrix = m_RotationMatrix;
+	m_ModelMatrix = glm::scale(m_ModelMatrix, glm::vec3(modelScale));
+	m_ModelMatrix = glm::translate(m_ModelMatrix, glm::vec3(-m_FocusPoint.x, -m_FocusPoint.y, -m_FocusPoint.z)); // Translate it down a bit so it's at the center of the scene
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
+
+	Color normalColor(1.0f, 1.0f, 1.0f);
+	InitMaterial(normalColor); 
+	m_SimplifiedMesh.Draw(*m_Shader);
 }
 
 void CGLProjectInRibbonView::DrawModelInNormalMode()
@@ -1144,6 +1255,50 @@ void CGLProjectInRibbonView::DrawModelSegmentation()
 		InitMaterial(m_MeshList[i].color);
 		m_MeshList[i].Draw(*m_Shader);
 	}
+}
+
+void CGLProjectInRibbonView::DrawFlatMesh()
+{
+	assert(m_pFlatMesh != nullptr);
+
+	m_Shader->Use();
+	// Transformation matrices
+	m_ProjectionMatrix = glm::perspective(m_Camera->Zoom, (float)m_ScreenWidth / (float)m_ScreenHeight, 1.0f, bodyDiagnalLength * 10);
+	m_ViewMatrix = m_Camera->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "projection"), 1, GL_FALSE, glm::value_ptr(m_ProjectionMatrix));
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "view"), 1, GL_FALSE, glm::value_ptr(m_ViewMatrix));
+	// Draw the loaded model
+	m_ModelMatrix = glm::mat4(1.0);
+	m_ModelMatrix = m_RotationMatrix;
+	m_ModelMatrix = glm::scale(m_ModelMatrix, glm::vec3(modelScale));
+	m_ModelMatrix = glm::translate(m_ModelMatrix, glm::vec3(-m_FocusPoint.x, -m_FocusPoint.y, -m_FocusPoint.z)); // Translate it down a bit so it's at the center of the scene
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
+
+	Color normalColor(1.0f, 1.0f, 1.0f);
+	InitMaterial(normalColor);
+	m_pFlatMesh->Draw(*m_Shader);
+}
+
+void CGLProjectInRibbonView::DrawSmoothMesh()
+{
+	assert(m_pSmoothMesh != nullptr);
+
+	m_Shader->Use();
+	// Transformation matrices
+	m_ProjectionMatrix = glm::perspective(m_Camera->Zoom, (float)m_ScreenWidth / (float)m_ScreenHeight, 1.0f, bodyDiagnalLength * 10);
+	m_ViewMatrix = m_Camera->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "projection"), 1, GL_FALSE, glm::value_ptr(m_ProjectionMatrix));
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "view"), 1, GL_FALSE, glm::value_ptr(m_ViewMatrix));
+	// Draw the loaded model
+	m_ModelMatrix = glm::mat4(1.0);
+	m_ModelMatrix = m_RotationMatrix;
+	m_ModelMatrix = glm::scale(m_ModelMatrix, glm::vec3(modelScale));
+	m_ModelMatrix = glm::translate(m_ModelMatrix, glm::vec3(-m_FocusPoint.x, -m_FocusPoint.y, -m_FocusPoint.z)); // Translate it down a bit so it's at the center of the scene
+	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
+
+	Color normalColor(1.0f, 1.0f, 1.0f);
+	InitMaterial(normalColor);
+	m_pSmoothMesh->Draw(*m_Shader);
 }
 
 void CGLProjectInRibbonView::DrawTextInfo()
@@ -1251,7 +1406,7 @@ void CGLProjectInRibbonView::HelperSimplifyWithDelete(TreeNode * pTreeNode, int 
 {
 	if (pTreeNode == nullptr) return;
 	
-	if (k > 2)
+	if (k == 3)
 		m_MeshList[pTreeNode->indexMesh].SetDelete();
 
 	if (!pTreeNode->childNodes.empty())
@@ -1315,6 +1470,14 @@ void CGLProjectInRibbonView::ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh,
 	SMeshLib::IO::importFromMesh(pMesh, &pPolyhedron);
 }
 
+void CGLProjectInRibbonView::ConvertFromMeshToSurfaceMeshPolyhedron(const Mesh & pMesh, Surface_mesh & pSurfaceMesh)
+{
+	assert(pMesh.vertices.size() != 0);
+	assert(pMesh.indices.size() != 0);
+
+	SMeshLib::IO::importFromMesh(pMesh, &pSurfaceMesh);
+}
+
 void CGLProjectInRibbonView::CombineMesh()
 {
 	m_CombinedMesh.vertices.clear();
@@ -1346,4 +1509,393 @@ void CGLProjectInRibbonView::CombineMesh()
 
 		}
 	}
+}
+
+void CGLProjectInRibbonView::CombineTheMesh(int meshIndex)
+{
+	m_CombinedMesh.vertices.clear();
+	m_CombinedMesh.indices.clear();
+	m_CombinedMesh.textures.clear();
+
+	map<tuple<float, float, float>, int> mp;
+
+	for (const auto & indice : m_MeshList[meshIndex].indices)
+	{
+		auto v = m_MeshList[meshIndex].vertices[indice];
+		auto tp = make_tuple(v.Position.x, v.Position.y, v.Position.z);
+		if (mp.count(tp) > 0)
+		{
+			m_CombinedMesh.indices.push_back(mp[tp]);
+		}
+		else
+		{
+			m_CombinedMesh.vertices.push_back(Vertex(glm::vec3(get<0>(tp), get<1>(tp), get<2>(tp)), glm::vec3(0, 0, 0), glm::vec2(0, 0)));
+			m_CombinedMesh.indices.push_back(m_CombinedMesh.vertices.size() - 1);
+
+			mp.insert({ tp, m_CombinedMesh.vertices.size() - 1 });
+		}
+	}
+}
+
+
+void CGLProjectInRibbonView::OnNormalDisplay()
+{
+	// TODO:  在此添加命令处理程序代码
+	SetupMesh(m_NormalMesh);
+	AdjustCameraView(m_NormalMesh);
+	SetDrawingMode(DRAW_NORMAL);
+
+	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnSegmentationDisplay()
+{
+	// TODO:  在此添加命令处理程序代码
+	SetupMeshList();
+	AdjustCameraView(m_MeshList);
+	//ClearMeshSegmentationDeleteState();
+	SetDrawingMode(DRAW_MESHSEGMENTATION);
+
+	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnSimplifiedDisplay()
+{
+	// TODO:  在此添加命令处理程序代码
+	SetupMesh(m_SimplifiedMesh);
+	AdjustCameraView(m_SimplifiedMesh);
+	SetDrawingMode(DRAW_SIMPLIFIEDMESH);
+
+	Invalidate();
+}
+
+void CGLProjectInRibbonView::OnDeleteSimp()
+{
+	// TODO:  在此添加命令处理程序代码
+
+	// TODO:  在此添加命令处理程序代码
+#ifndef MIDDLE_PROCESS
+
+	double maxSDF = DOUBLE_MIN;
+	int indexMaxSDF = -1;
+	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
+		facet_it != m_Polyhedron.facets_end(); ++facet_it)
+	{
+		if (internal_sdf_map[facet_it] > maxSDF)
+		{
+			maxSDF = internal_sdf_map[facet_it];
+			indexMaxSDF = internal_segment_map[facet_it];
+		}
+	}
+
+	//TO DO : mesh simplification
+	//adjacent graph
+	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
+	m_IndexMaxSDF = indexMaxSDF;
+
+	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
+		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
+	{
+		int indexMesh = internal_segment_map[halfedge_it->facet()];
+		int indexOppositeMesh = internal_segment_map[halfedge_it->opposite()->facet()];
+		if (indexMesh == indexOppositeMesh) continue;
+		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
+	}
+
+#endif // MIDDLE_PROCESS
+	//construct tree
+	ConstructTree(m_IndexMaxSDF);
+	SimplifyWithDelete();
+
+	//m_MeshList[0].SetDelete();
+
+	CombineMesh();
+
+#pragma region Hole Filling
+
+	CgalPolyhedron tmpPolyhedron;
+	ConvertFromMeshToCgalPolyhedron(m_CombinedMesh, tmpPolyhedron);
+
+	unsigned int nb_holes = 0;
+	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
+	{
+		if (h->is_border())
+		{
+			vector<Facet_handle> patch_facets;
+			vector<Vertex_handle> patch_vertices;
+			bool success = CGAL::cpp11::get<0>(
+				CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+				tmpPolyhedron,
+				h,
+				back_inserter(patch_facets),
+				back_inserter(patch_vertices),
+				CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
+			cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+			cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+			cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+			++nb_holes;
+		}
+	}
+
+	cout << endl;
+	cout << nb_holes << "holes have been filled" << endl;
+	std::ofstream out("filledTmp.off");
+	out.precision(17);
+	out << tmpPolyhedron << endl;
+
+	//Extract mesh from simplified polyhedron
+	m_SimplifiedMesh.vertices.clear();
+	m_SimplifiedMesh.indices.clear();
+	m_SimplifiedMesh.textures.clear();
+
+	//Simplified Flat Mesh
+	for (CgalPolyhedron::Facet_iterator facet_it = tmpPolyhedron.facets_begin();
+		facet_it != tmpPolyhedron.facets_end(); ++facet_it)
+	{
+		int verticeIndex = m_SimplifiedMesh.vertices.size();
+		int indiceIndex = m_SimplifiedMesh.indices.size();
+		Halfedge_around_facet_circulator hec = facet_it->facet_begin();// get half edge handle
+		Halfedge_handle he_begin = hec;
+		Vertex_handle v;
+		vector<glm::vec3> points;//points for calculate normals
+		do
+		{
+			v = hec->vertex();
+			Point p = v->point();
+			m_SimplifiedMesh.vertices.push_back(Vertex(glm::vec3(p.x(), p.y(), p.z()), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+			m_SimplifiedMesh.indices.push_back(indiceIndex);
+			points.push_back(glm::vec3(p.x(), p.y(), p.z()));
+			++indiceIndex;
+			++hec;
+		} while (he_begin != hec);
+		//calculate normals
+		assert(points.size() == 3);
+		glm::vec3 v1 = points[1] - points[0];
+		glm::vec3 v2 = points[2] - points[1];
+		glm::vec3 vNormal = glm::cross(v1, v2);
+		int lastIndex = m_SimplifiedMesh.vertices.size() - 1;
+		m_SimplifiedMesh.vertices[lastIndex].Normal = vNormal;
+		m_SimplifiedMesh.vertices[lastIndex - 1].Normal = vNormal;
+		m_SimplifiedMesh.vertices[lastIndex - 2].Normal = vNormal;
+	}
+#pragma endregion Hole Filling
+
+	OnSimplifiedDisplay();
+}
+
+
+void CGLProjectInRibbonView::OnSerializeWrite()
+{
+	// TODO:  在此添加命令处理程序代码
+
+	assert(!m_MeshList.empty());
+	string outFileName = "model.mseg";
+	ofstream ofs(outFileName, std::ios::out);
+
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		ofs << "m" << " " << m_MeshList[i].color.R << " " << m_MeshList[i].color.G << " " << m_MeshList[i].color.B << endl;
+		for (const auto & v : m_MeshList[i].vertices)
+		{
+			ofs << "v" << " "
+				<< v.Position.x << " " << v.Position.y << " " << v.Position.z << " "
+				<< v.Normal.x << " " << v.Normal.y << " " << v.Normal.z << endl;
+		}
+		for (int j = 0; j < m_MeshList[i].indices.size(); j += 3)
+		{
+			ofs << "f" << " " << m_MeshList[i].indices[j] << " " << m_MeshList[i].indices[j + 1] << " "<< m_MeshList[i].indices[j + 2] << endl;
+		}
+		ofs << "#" << endl;
+	}
+
+	outFileName = "model.adjg";
+	ofstream ofsMeshGraph(outFileName, std::ios::out);
+
+	ofsMeshGraph << number_of_segments << endl;
+	for (int i = 0; i < m_MeshGraph.size(); ++i)
+	{
+		for (int j = 0; j < m_MeshGraph[i].size(); ++j)
+		{
+			ofsMeshGraph << m_MeshGraph[i][j] << " ";
+		}
+		ofsMeshGraph << endl;
+	}
+	ofsMeshGraph << m_IndexMaxSDF;
+}
+
+void CGLProjectInRibbonView::OnSerializeRead()
+{
+	// TODO:  在此添加命令处理程序代码
+	m_MeshList.clear();
+
+	string inFileName = "model.mseg";
+	ifstream ifs(inFileName, std::ios::in);
+	assert(ifs.is_open());
+
+	string token;
+	Mesh newMesh;
+	Vertex newVertex;
+	int indice1, indice2, indice3;
+	while (!ifs.eof())
+	{
+		token.clear();
+		ifs >> token;
+		if (token == "m")
+		{
+			ifs >> newMesh.color.R >> newMesh.color.G >> newMesh.color.B;
+		}
+		else if (token == "v")
+		{			
+			ifs >> newVertex.Position.x >> newVertex.Position.y >> newVertex.Position.z;
+			ifs >> newVertex.Normal.x >> newVertex.Normal.y >> newVertex.Normal.z;
+			newMesh.vertices.push_back(newVertex);
+		}
+		else if (token == "f")
+		{
+			ifs >> indice1 >> indice2 >> indice3;
+			newMesh.indices.push_back(indice1);
+			newMesh.indices.push_back(indice2);
+			newMesh.indices.push_back(indice3);
+		}
+		else if (token == "#")
+		{
+			m_MeshList.push_back(newMesh);
+			newMesh.vertices.clear();
+			newMesh.indices.clear();
+			newMesh.textures.clear();
+		}
+	}
+
+	inFileName = "model.adjg";
+	ifstream ifsMeshGraph(inFileName, std::ios::in);
+
+	m_MeshGraph.clear();
+	ifsMeshGraph >> number_of_segments;
+	vector<int> line;
+	int number;
+	for (int i = 0; i < number_of_segments; ++i)
+	{
+		line.clear();
+		for (int j = 0; j < number_of_segments; ++j)
+		{
+			ifsMeshGraph >> number;
+			line.push_back(number);
+		}
+		m_MeshGraph.push_back(line);
+	}
+	ifsMeshGraph >> m_IndexMaxSDF;
+}
+
+
+void CGLProjectInRibbonView::OnQuadricSimp()
+{
+	// TODO:  在此添加命令处理程序代码
+	//construct tree
+	ConstructTree(m_IndexMaxSDF);
+	SimplifyWithDelete();
+
+	vector<int> deletedMeshes;
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		if (m_MeshList[i].isDeleted())
+		{
+			deletedMeshes.push_back(i);
+		}
+	}
+
+	m_MeshList[deletedMeshes[0]].SetDelete();
+
+	int deletedMeshIndex = deletedMeshes[0];
+	
+	CombineTheMesh(deletedMeshIndex);
+
+	Surface_mesh surface_mesh;
+	ConvertFromMeshToSurfaceMeshPolyhedron(m_CombinedMesh, surface_mesh);
+
+	// map used to check that constrained_edges and the points of its vertices
+	// are preserved at the end of the simplification
+	std::map<Surface_mesh::Halfedge_handle, std::pair<Point_3, Point_3> >constrained_edges;
+	std::size_t nb_border_edges = 0;
+	for (Surface_mesh::Halfedge_iterator hit = surface_mesh.halfedges_begin(),
+		hit_end = surface_mesh.halfedges_end();
+		hit != hit_end; ++hit)
+	{
+		if (hit->is_border()){
+			constrained_edges[hit] = std::make_pair(hit->opposite()->vertex()->point(),
+				hit->vertex()->point());
+			++nb_border_edges;
+		}
+	}
+	// Contract the surface mesh as much as possible
+	SMS::Count_stop_predicate<Surface_mesh> stop(surface_mesh.size_of_halfedges() / 4);
+	Border_is_constrained_edge_map bem(surface_mesh);
+	// This the actual call to the simplification algorithm.
+	// The surface mesh and stop conditions are mandatory arguments.
+	// The index maps are needed because the vertices and edges
+	// of this surface mesh lack an "id()" field.
+	int r = SMS::edge_collapse
+		(surface_mesh
+		, stop
+		, CGAL::parameters::vertex_index_map(get(CGAL::vertex_external_index, surface_mesh))
+		.halfedge_index_map(get(CGAL::halfedge_external_index, surface_mesh))
+		.edge_is_constrained_map(bem)
+		.get_placement(Placement(bem))
+		);
+	std::cout << "\nFinished...\n" << r << " edges removed.\n"
+		<< (surface_mesh.size_of_halfedges()) << " final edges.\n";
+	std::ofstream os("SimpOut.off"); os << surface_mesh;
+	// now check!
+	for (Surface_mesh::Halfedge_iterator hit = surface_mesh.halfedges_begin(),
+		hit_end = surface_mesh.halfedges_end();
+		hit != hit_end; ++hit)
+	{
+		if (hit->is_border()){
+			--nb_border_edges;
+			assert(constrained_edges[hit] ==
+				std::make_pair(hit->opposite()->vertex()->point(),
+				hit->vertex()->point()));
+		}
+	}
+	assert(nb_border_edges == 0);
+
+	//Update Mesh List
+
+	m_MeshList[deletedMeshIndex].vertices.clear();
+	m_MeshList[deletedMeshIndex].indices.clear();
+
+	for (Surface_mesh::Facet_iterator facet_it = surface_mesh.facets_begin();
+		facet_it != surface_mesh.facets_end(); ++facet_it)
+	{
+		int verticeIndex = m_MeshList[deletedMeshIndex].vertices.size();
+		int indiceIndex = m_MeshList[deletedMeshIndex].indices.size();
+		Surface_mesh::Halfedge_around_facet_circulator hec = facet_it->facet_begin();// get half edge handle
+		Surface_mesh::Halfedge_handle he_begin = hec;
+		Surface_mesh::Vertex_handle v;
+		vector<glm::vec3> points;//points for calculate normals
+		do
+		{
+			v = hec->vertex();
+			Surface_mesh::Point p = v->point();
+			m_MeshList[deletedMeshIndex].vertices.push_back(Vertex(glm::vec3(p.x(), p.y(), p.z()), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+			m_MeshList[deletedMeshIndex].indices.push_back(indiceIndex);
+			points.push_back(glm::vec3(p.x(), p.y(), p.z()));
+			++indiceIndex;
+			++hec;
+		} while (he_begin != hec);
+		//calculate normals
+		assert(points.size() == 3);
+		glm::vec3 v1 = points[1] - points[0];
+		glm::vec3 v2 = points[2] - points[1];
+		glm::vec3 vNormal = glm::cross(v1, v2);
+		int lastIndex = m_MeshList[deletedMeshIndex].vertices.size() - 1;
+		m_MeshList[deletedMeshIndex].vertices[lastIndex].Normal = vNormal;
+		m_MeshList[deletedMeshIndex].vertices[lastIndex - 1].Normal = vNormal;
+		m_MeshList[deletedMeshIndex].vertices[lastIndex - 2].Normal = vNormal;
+	}
+	
+	m_MeshList[deletedMeshIndex].SetExist();
+
+	OnSegmentationDisplay();
 }
