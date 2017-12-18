@@ -1,0 +1,14 @@
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/Nightly.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/Experimental.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/Continuous.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/stl_logging_unittest.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/NightlyMemoryCheck.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/utilities_unittest.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/glog.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/logging_unittest.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/demangle_unittest.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/RUN_TESTS.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/PACKAGE.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/INSTALL.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/ALL_BUILD.dir
+D:/MeshSimplification/GLProjectInRibbon/GLProjectInRibbon/glog/glog-0.3.5/build/CMakeFiles/ZERO_CHECK.dir

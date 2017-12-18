@@ -1,28 +1,6 @@
-// This MFC Samples source code demonstrates using MFC Microsoft Office Fluent User Interface 
-// (the "Fluent UI") and is provided only as referential material to supplement the 
-// Microsoft Foundation Classes Reference and related electronic documentation 
-// included with the MFC C++ library software.  
-// License terms to copy, use or distribute the Fluent UI are available separately.  
-// To learn more about our Fluent UI licensing program, please visit 
-// http://go.microsoft.com/fwlink/?LinkId=238214.
-//
-// Copyright (C) Microsoft Corporation
-// All rights reserved.
-
-// GLProjectInRibbonView.h : interface of the CGLProjectInRibbonView class
-//By LHZ
-
+//Author : LHZ
 #pragma once
-
-// GL includes
-#include "Shader.h"
-#include "Camera.h"
-#include "Model.h"
-#include "GLText.h"
-#include "ImportOBJ.h"
-#include "Color.h"
-#include "Log.h"
-
+#pragma region include
 //System include
 #include <windows.h>
 
@@ -64,7 +42,15 @@
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
 
-
+// GL includes
+#include "Shader.h"
+#include "Camera.h"
+#include "Model.h"
+#include "GLText.h"
+#include "ImportOBJ.h"
+#include "Color.h"
+#pragma endregion include
+#pragma region define
 //Define Marcos
 #define DOUBLE_MAX  10000000000000.0f
 #define DOUBLE_MIN -10000000000000.0f
@@ -85,279 +71,198 @@
 #define BORDER 3
 #define BORDER_CALCED 4
 
-//CGAL Data Structure
-typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
-typedef CGAL::Polyhedron_3<Kernel,
-	CGAL::Polyhedron_items_3,
-	CGAL::HalfedgeDS_list> CgalPolyhedron;
-typedef CgalPolyhedron::Halfedge_around_facet_circulator Halfedge_around_facet_circulator;
-typedef CgalPolyhedron::Vertex_handle Vertex_handle;
-typedef CgalPolyhedron::Facet_handle       Facet_handle;
-typedef CgalPolyhedron::Point Point;
-typedef CgalPolyhedron::Halfedge_handle Halfedge_handle;
+#pragma endregion define
 
-typedef std::map<CgalPolyhedron::Facet_const_handle, double> Facet_double_map;
-typedef std::map<CgalPolyhedron::Facet_const_handle, std::size_t> Facet_int_map;
-
-//Simplification needed
-typedef CGAL::Simple_cartesian<double> SimpKernel;
-typedef SimpKernel::Point_3 Point_3;
-typedef CGAL::Polyhedron_3<SimpKernel> Surface_mesh;
-
-namespace SMS = CGAL::Surface_mesh_simplification;
-
-#pragma region New_Algorithm
-
-typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
-
-typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletingEdgeArray;
-typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> UnDeterminedEdgeArray;
-typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletedEdgeArray;
-
-typedef struct Point_
-{
-	Point_(float _x = 0.0f, float _y = 0.0f, float _z = 0.0f) :
-		x(_x),
-		y(_y),
-		z(_z)
-	{
-	};
-
-	Point_(const Point_ & p)
-	{
-		x = p.x;
-		y = p.y;
-		z = p.z;
-	}
-
-	bool operator< (const Point_ & rhs)
-	{
-		return this->x < rhs.x
-			|| (this->x == rhs.x) && (this->y < rhs.y)
-			|| (this->x == rhs.x && this->y == rhs.y) && (this->z < rhs.z);
-	}
-
-	bool operator==(const Point_ & rhs)
-	{
-		return this->x == rhs.x && this->y == rhs.y && this->z == rhs.z;
-	}
-
-	bool operator() (const Point_ & lhs, const Point_ & rhs)
-	{
-		return lhs.x < rhs.x
-			|| (lhs.x == rhs.x) && (lhs.y < rhs.y)
-			|| (lhs.x == rhs.x && lhs.y == rhs.y) && (lhs.z < rhs.z);
-	}
-
-	float x;
-	float y;
-	float z;
-} PointNA;
-
-typedef PointNA BorderPoint;
-
-typedef struct Region_
-{
-	Region_() : isDeleted(false) {};
-
-	std::vector<MyMesh::FaceHandle> faces;
-	typedef int blsIdx;
-	std::set<blsIdx> blss;
-	bool isDeleted;
-} Region;
-
-typedef struct BorderLineSegment_
-{
-	BorderLineSegment_(PointNA& _A, const PointNA& _B)
-	{
-		if (!(_A < _B))
-		{
-			A = _B;
-			B = _A;
-		}
-		else
-		{
-			A = _A;
-			B = _B;
-		}
-
-		length = glm::length(glm::vec3(A.x - B.x, A.y - B.y, A.z - B.z));
-		needsDeleted = false;
-	}
-
-	PointNA A;
-	PointNA B;
-
-	float length;
-	std::set<int> RegionIDs;
-
-	bool needsDeleted;
-} BorderLineSegment;
-
-typedef int BLS_id; // Border Line Segments idx
-typedef struct GraphNode_
-{
-	GraphNode_() : isVisited(false) {};
-
-	std::vector<std::pair<BorderPoint, BLS_id>> toPoints;
-	bool isVisited;
-} GraphNode;
-
-//生成边界点构成的最大连通区域
-typedef struct ConnectRegion_
-{
-	ConnectRegion_() : isDeleted(false), meanLength(FLOAT_MAX) {};
-
-	std::vector<BorderPoint> points;
-	typedef int blsIdx;
-	std::set<blsIdx> blss;
-	float meanLength;
-	bool isDeleted;
-
-} ConnectRegion;
-#pragma endregion New_Algorithm
-
-
-//
-// BGL property map which indicates whether an edge is marked as non-removable
-//
-struct Border_is_constrained_edge_map{
-	const Surface_mesh* sm_ptr;
-	typedef boost::graph_traits<Surface_mesh>::edge_descriptor key_type;
-	typedef bool value_type;
-	typedef value_type reference;
-	typedef boost::readable_property_map_tag category;
-	Border_is_constrained_edge_map(const Surface_mesh& sm)
-		: sm_ptr(&sm)
-	{}
-	friend bool get(Border_is_constrained_edge_map m, const key_type& edge) {
-		return CGAL::is_border(edge, *m.sm_ptr);
-	}
-};
-//
-// Placement class
-//
-typedef SMS::Constrained_placement<SMS::Midpoint_placement<Surface_mesh>,
-	Border_is_constrained_edge_map > Placement;
-
-struct TreeNode {
-	TreeNode() {
-		indexMesh = -1;
-		avgSDF = 0.0f;
-		singleSDF = 0.0f;
-		faceNum = 0;
-		singleFaceNum = 0;
-		isDeleted = false;
-	};
-	TreeNode(int pIndexMesh) : indexMesh(pIndexMesh) {
-		avgSDF = 0.0f;
-		faceNum = 0;
-		singleFaceNum = 0;
-		isDeleted = false;
-	};
-
-	int indexMesh;
-	double avgSDF;
-	double singleSDF;
-	int faceNum;
-	int singleFaceNum;
-
-	int isDeleted;
-
-	vector<TreeNode *> childNodes;
-};
+namespace sms = CGAL::Surface_mesh_simplification;
 
 class CGLProjectInRibbonView : public CView
 {
-protected: // create from serialization only
-	CGLProjectInRibbonView();
-	DECLARE_DYNCREATE(CGLProjectInRibbonView)
-	// Attributes
-public:
-	CGLProjectInRibbonDoc* GetDocument() const;
-public:
-	//Data Structure
-	CString m_FilePath;
-	Shader* m_Shader;
-	Shader* m_TextShader;
-	Model* m_Model;
-	string m_ModelName;
-	Camera* m_Camera;
-	GLText m_text;
-	//Model* m_Model_LOD;
+#pragma region typedef&struct
+//CGAL Data Structure
+	typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
+	typedef CGAL::Polyhedron_3<Kernel,
+		CGAL::Polyhedron_items_3,
+		CGAL::HalfedgeDS_list> CgalPolyhedron;
+	typedef CgalPolyhedron::Halfedge_around_facet_circulator Halfedge_around_facet_circulator;
+	typedef CgalPolyhedron::Vertex_handle Vertex_handle;
+	typedef CgalPolyhedron::Facet_handle       Facet_handle;
+	typedef CgalPolyhedron::Point Point;
+	typedef CgalPolyhedron::Halfedge_handle Halfedge_handle;
+
+	typedef std::map<CgalPolyhedron::Facet_const_handle, double> Facet_double_map;
+	typedef std::map<CgalPolyhedron::Facet_const_handle, std::size_t> Facet_int_map;
+
+	//Simplification needed
+	typedef CGAL::Simple_cartesian<double> SimpKernel;
+	typedef SimpKernel::Point_3 Point_3;
+	typedef CGAL::Polyhedron_3<SimpKernel> Surface_mesh;
+
+#pragma region New_Algorithm
+
+	typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
+
+	typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletingEdgeArray;
+	typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> UnDeterminedEdgeArray;
+	typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletedEdgeArray;
+
+	typedef struct Point_
+	{
+		Point_(float _x = 0.0f, float _y = 0.0f, float _z = 0.0f) :
+			x(_x),
+			y(_y),
+			z(_z)
+		{
+		};
+
+		Point_(const Point_ & p)
+		{
+			x = p.x;
+			y = p.y;
+			z = p.z;
+		}
+
+		bool operator< (const Point_ & rhs)
+		{
+			return this->x < rhs.x
+				|| (this->x == rhs.x) && (this->y < rhs.y)
+				|| (this->x == rhs.x && this->y == rhs.y) && (this->z < rhs.z);
+		}
+
+		bool operator==(const Point_ & rhs)
+		{
+			return this->x == rhs.x && this->y == rhs.y && this->z == rhs.z;
+		}
+
+		bool operator() (const Point_ & lhs, const Point_ & rhs)
+		{
+			return lhs.x < rhs.x
+				|| (lhs.x == rhs.x) && (lhs.y < rhs.y)
+				|| (lhs.x == rhs.x && lhs.y == rhs.y) && (lhs.z < rhs.z);
+		}
+
+		float x;
+		float y;
+		float z;
+	} PointNA;
+
+	typedef PointNA BorderPoint;
+
+	typedef struct Region_
+	{
+		Region_() : isDeleted(false) {};
+
+		std::vector<MyMesh::FaceHandle> faces;
+		typedef int blsIdx;
+		std::set<blsIdx> blss;
+		bool isDeleted;
+	} Region;
+
+	typedef struct BorderLineSegment_
+	{
+		BorderLineSegment_(PointNA& _A, const PointNA& _B)
+		{
+			if (!(_A < _B))
+			{
+				A = _B;
+				B = _A;
+			}
+			else
+			{
+				A = _A;
+				B = _B;
+			}
+
+			length = glm::length(glm::vec3(A.x - B.x, A.y - B.y, A.z - B.z));
+			needsDeleted = false;
+		}
+
+		PointNA A;
+		PointNA B;
+
+		float length;
+		std::set<int> RegionIDs;
+
+		bool needsDeleted;
+	} BorderLineSegment;
+
+	typedef int BLS_id; // Border Line Segments idx
+	typedef struct GraphNode_
+	{
+		GraphNode_() : isVisited(false) {};
+
+		std::vector<std::pair<BorderPoint, BLS_id>> toPoints;
+		bool isVisited;
+	} GraphNode;
+
+	//生成边界点构成的最大连通区域
+	typedef struct ConnectRegion_
+	{
+		ConnectRegion_() : isDeleted(false), meanLength(FLOAT_MAX) {};
+
+		std::vector<BorderPoint> points;
+		typedef int blsIdx;
+		std::set<blsIdx> blss;
+		float meanLength;
+		bool isDeleted;
+
+	} ConnectRegion;
+#pragma endregion New_Algorithm
 
 
-	//CGAL Model
-	CgalPolyhedron m_Polyhedron;
+	//
+	// BGL property map which indicates whether an edge is marked as non-removable
+	//
+	struct Border_is_constrained_edge_map{
+		const Surface_mesh* sm_ptr;
+		typedef boost::graph_traits<Surface_mesh>::edge_descriptor key_type;
+		typedef bool value_type;
+		typedef value_type reference;
+		typedef boost::readable_property_map_tag category;
+		Border_is_constrained_edge_map(const Surface_mesh& sm)
+			: sm_ptr(&sm)
+		{}
+		friend bool get(Border_is_constrained_edge_map m, const key_type& edge) {
+			return CGAL::is_border(edge, *m.sm_ptr);
+		}
+	};
+	//
+	// Placement class
+	//
+	typedef sms::Constrained_placement<sms::Midpoint_placement<Surface_mesh>,
+									Border_is_constrained_edge_map > Placement;
 
-	//GPU Data Structure
-	float modelScale;
-	glm::mat4 m_ModelMatrix;
-	glm::mat4 m_ViewMatrix;
-	glm::mat4 m_ProjectionMatrix;
-	glm::mat4 m_RotationMatrix;
+	struct TreeNode {
+		TreeNode() {
+			indexMesh = -1;
+			avgSDF = 0.0f;
+			singleSDF = 0.0f;
+			faceNum = 0;
+			singleFaceNum = 0;
+			isDeleted = false;
+		};
+		TreeNode(int pIndexMesh) : indexMesh(pIndexMesh) {
+			avgSDF = 0.0f;
+			faceNum = 0;
+			singleFaceNum = 0;
+			isDeleted = false;
+		};
 
-	bool isDragged = false;
-	GLfloat lastX;
-	GLfloat lastY;
+		int indexMesh;
+		double avgSDF;
+		double singleSDF;
+		int faceNum;
+		int singleFaceNum;
 
-	//Time FPS
-	LARGE_INTEGER frequency;
-	LARGE_INTEGER count1;
-	LARGE_INTEGER count2;
+		int isDeleted;
 
-	float distance;
-	double fps;
-
-	glm::vec3 m_FocusPoint;
-	double xMin;
-	double xMax;
-	double yMin;
-	double yMax;
-	double zMin;
-	double zMax;
-	float bodyDiagnalLength;
-
-	int m_ScreenWidth;
-	int m_ScreenHeight;
-
-	bool m_ifShowLine = false;
-	bool m_ifShowLod = false;
-
-	bool isCameraAdjusted;
-
-	vector<Model> m_ModelList;
-
-	//Mesh Segmentation
-	Facet_double_map internal_sdf_map; //facet_handle -> sdf value
-	Facet_int_map internal_segment_map;//facet_handle -> mesh index
-	std::size_t number_of_segments;
-
-	vector<vector<int>> m_MeshGraph;
-	int m_IndexMaxSDF = 0;
-	TreeNode* m_MeshTree;
-
-	//Mesh For Display
-	Mesh* m_pFlatMesh;
-	Mesh* m_pSmoothMesh;
-
-	int m_DrawingMode;
-
-	//Mesh Cache
-	Mesh m_CombinedMesh;
-
-	Mesh m_NormalMesh;
-	vector<Mesh> m_MeshList; //For Segmentation
-	Mesh m_SimplifiedMesh;
-
-	//Log System
-	Log m_Log;
-	string m_InFileName;
-	// Operations
+		vector<TreeNode *> childNodes;
+	};
+#pragma endregion typedef&struct
+#pragma region algorithm_method
 public:
 	Mesh GenerateFlatMesh(Mesh & pMesh);
 	void GenerateColorList(vector<Color>& pColorList);
-	int GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor);
+	int  GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor);
 	void SetupMeshList();
 	void SetupMesh(Mesh & pMesh);
 	void SetupSimplifiedMesh();
@@ -380,16 +285,17 @@ public:
 	void UpdateTreeNode();
 	void HelperUpdateTreeNode(TreeNode* pTreeNode);
 	void UpdateTreeNodeFaceNum(TreeNode* pTreeNode);
-	int HelperUpdateTreeNodeFaceNum(TreeNode* pTreeNode);
+	int  HelperUpdateTreeNodeFaceNum(TreeNode* pTreeNode);
 	void UpdateTreeNodeSDF(TreeNode* pTreeNode);
 	double HelperUpdateTreeNodeSDF(TreeNode* pTreeNode);
 	void DeleteTreeNode(TreeNode* pTreeNode);
 	bool isLeaf(TreeNode* pTreeNode);
 	bool isJoint(TreeNode* pTreeNode);
 	bool SimplifyInFinalMethod(TreeNode* pTreeNode, int& restFaceNum, int& targetNum);
-	int TreeNodesSum(TreeNode* tn);
+	int  TreeNodesSum(TreeNode* tn);
 	void BuildFinalMeshFromMeshTree(TreeNode* root);
 	void EstimateSimplifyTarget(int &targetFaceNum, float &targetSDF);
+	void RepairHole();
 
 	//New Algorithm
 public:
@@ -412,8 +318,8 @@ public:
 		std::vector<BorderLineSegment> &borderLineSegments,
 		std::vector<Region>& regionPs);
 	void ContourLineBasedMethod();
-
-
+#pragma endregion algorithm_method
+#pragma region rendering_method
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);
 	void CalculateFocusPoint(Model * pModel);
@@ -432,7 +338,6 @@ public:
 	// Overrides
 public:
 	virtual void OnDraw(CDC* pDC);  // overridden to draw this view
-
 	void DrawTextInfo();
 	void DrawModel();
 	void DrawMesh(int drawMode);
@@ -446,10 +351,10 @@ public:
 	void TimeStart();
 	void InitMaterial(Color& pColor);
 	void InitDirectionlLighting();
-
-
-	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
+#pragma endregion rendering_method
+#pragma region event_handler
 protected:
+	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 	virtual BOOL OnPreparePrinting(CPrintInfo* pInfo);
 	virtual void OnBeginPrinting(CDC* pDC, CPrintInfo* pInfo);
 	virtual void OnEndPrinting(CDC* pDC, CPrintInfo* pInfo);
@@ -463,7 +368,6 @@ public:
 #endif
 
 protected:
-
 	// Generated message map functions
 protected:
 	afx_msg void OnFilePrintPreview();
@@ -498,12 +402,94 @@ public:
 	afx_msg void OnSerializeRead();
 	afx_msg void OnQuadricSimp();
 	afx_msg void OnFinalmethod();
-
-	void RepairHole();
-
 	afx_msg void OnStartCLBAlgorithm();
-};
+#pragma endregion event_handler
+#pragma region data
+private:
+	//Data Structure
+	CString file_path_;
+	Shader* shader_;
+	Shader* text_shader_;
+	Model* model_;
+	string model_name_;
+	Camera* camera_;
+	GLText text_;
+	//Model* m_Model_LOD;
 
+	//CGAL Model
+	CgalPolyhedron polyhedron_;
+
+	//GPU Data Structure
+	float num_model_scale_;
+	glm::mat4 matrix_model_;
+	glm::mat4 matrix_view_;
+	glm::mat4 matrix_projection_;
+	glm::mat4 matrix_rotation_;
+
+	bool isDragged_ = false;
+	GLfloat num_lastX_;
+	GLfloat num_lastY_;
+
+	//Time FPS
+	LARGE_INTEGER frequency_;
+	LARGE_INTEGER count1_;
+	LARGE_INTEGER count2_;
+
+	float num_distance_;
+	double num_fps_;
+
+	glm::vec3 focus_point_;
+	double num_xMin_;
+	double num_xMax_;
+	double num_yMin_;
+	double num_yMax_;
+	double num_zMin_;
+	double num_zMax_;
+	float num_bodyDiagnalLength_;
+
+	int num_screen_width_;
+	int num_screen_height_;
+
+	bool isShowLine_ = false;
+	bool isShowLod_ = false;
+
+	bool isCameraAdjusted_;
+
+	vector<Model> model_list_;
+
+	//Mesh Segmentation
+	Facet_double_map internal_sdf_map_; //facet_handle -> sdf value
+	Facet_int_map internal_segment_map_;//facet_handle -> mesh index
+	std::size_t number_of_segments_;
+
+	vector<vector<int>> mesh_graph_;
+	int index_max_SDF_ = 0;
+	TreeNode* mesh_tree_;
+
+	//Mesh For Display
+	Mesh* pFlatMesh_;
+	Mesh* pSmoothMesh_;
+
+	int drawing_mode_;
+
+	//Mesh Cache
+	Mesh combined_mesh_;
+
+	Mesh normal_mesh_;
+	vector<Mesh> mesh_list_; //For Segmentation
+	Mesh simplified_mesh_;
+
+	////Log System
+	//Log m_Log;
+	string infile_name_;
+	// Operations
+#pragma endregion data
+protected:
+		CGLProjectInRibbonView();
+		DECLARE_DYNCREATE(CGLProjectInRibbonView)
+public:
+	CGLProjectInRibbonDoc* GetDocument() const;
+};
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const
 {
