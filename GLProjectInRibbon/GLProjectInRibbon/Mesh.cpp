@@ -5,6 +5,8 @@
 Mesh::Mesh()
 {
 	deleted = false;
+	faceNum = 0;
+	sdf = 0.0f;
 }
 
 Mesh::Mesh(vector<Vertex> vertices, vector<GLuint> indices, vector<Texture> textures)
@@ -14,6 +16,8 @@ Mesh::Mesh(vector<Vertex> vertices, vector<GLuint> indices, vector<Texture> text
 	this->textures = textures;
 
 	deleted = false;
+	faceNum = 0;
+	sdf = 0.0f;
 
 	//Now that we have all the required data, set vertex buffers and its attribute pointers.
 	this->setupMesh();
@@ -137,4 +141,11 @@ void Mesh::SetExist()
 bool Mesh::isDeleted()
 {
 	return deleted;
+}
+
+void Mesh::RefreshGpuData()
+{
+	glDeleteVertexArrays(1, &this->VAO);
+	glDeleteBuffers(1, &this->VBO);
+	glDeleteBuffers(1, &this->EBO);
 }

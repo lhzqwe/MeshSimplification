@@ -52,6 +52,7 @@ private:
 	/* Functions */
 	//Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in the meshes vector
 	void loadModel(string path);
+	void LoadModel(string path);
 	//Process a node in a recursive fashion. Process each individual mesh located at the node and repeats its process on its children nodes
 	void processNode(aiNode* node, const aiScene* scene);
 	Mesh processMesh(aiMesh* mesh, const aiScene* scene);

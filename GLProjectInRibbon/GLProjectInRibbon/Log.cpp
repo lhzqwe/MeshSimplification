@@ -10,7 +10,7 @@ Log::~Log()
 void Log::InitializeLog()
 {
 	m_Ofstream = ofstream(m_FileName, std::ios::out | std::ios::app);
-	assert(m_Ofstream.is_open());
+	//assert(m_Ofstream.is_open());
 }
 
 void Log::DestroyLog()

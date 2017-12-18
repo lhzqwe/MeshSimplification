@@ -26,6 +26,7 @@
 
 //Standard include
 #include <map>
+#include <algorithm>
 
 //CGAL include
 #include <CGAL/Simple_cartesian.h>
@@ -44,6 +45,7 @@
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Midpoint_placement.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Constrained_placement.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
+#include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/LindstromTurk_cost.h>
 
 //System include
 #include <windows.h>
@@ -111,10 +113,29 @@ typedef SMS::Constrained_placement<SMS::Midpoint_placement<Surface_mesh>,
 	Border_is_constrained_edge_map > Placement;
 
 struct TreeNode {
-	TreeNode() {};
-	TreeNode(int pIndexMesh) : indexMesh(pIndexMesh) {};
+	TreeNode() {
+		indexMesh = -1;
+		avgSDF = 0.0f;
+		singleSDF = 0.0f;
+		faceNum = 0;
+		singleFaceNum = 0;
+		isDeleted = false;
+	};
+	TreeNode(int pIndexMesh) : indexMesh(pIndexMesh) {
+		avgSDF = 0.0f;
+		faceNum = 0;
+		singleFaceNum = 0;
+		isDeleted = false;
+	};
 
 	int indexMesh;
+	double avgSDF;
+	double singleSDF;
+	int faceNum;
+	int singleFaceNum;
+
+	int isDeleted;
+
 	vector<TreeNode *> childNodes;
 };
 
@@ -132,6 +153,7 @@ public:
 	Shader* m_Shader;
 	Shader* m_TextShader;
 	Model* m_Model;
+	string m_ModelName;
 	Camera* m_Camera;
 	GLText m_text;
 	//Model* m_Model_LOD;
@@ -205,6 +227,7 @@ public:
 
 	//Log System
 	Log m_Log;
+	string m_InFileName;
 // Operations
 public:
 	Mesh GenerateFlatMesh(Mesh & pMesh);
@@ -214,6 +237,7 @@ public:
 	void SetupMesh(Mesh & pMesh);
 	void SetupSimplifiedMesh();
 	void ConstructTree(int indexMeshWithMaxSDF);
+	void ConstructTreeBFS(int indexMeshWithSDF);
 	void HelperConstructTree(TreeNode* pTreeNode, vector<bool>& usedMesh);
 	void DeleteTree();
 	void HelperDeleteTree(TreeNode* pTreeNode);
@@ -225,6 +249,22 @@ public:
 	void ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh, CgalPolyhedron & pPolyhedron);
 	void ConvertFromMeshToSurfaceMeshPolyhedron(const Mesh & pMesh, Surface_mesh & pSurfaceMesh);
 	void ClearMeshSegmentationDeleteState();
+	void SimplifyFinalMethod(int targetFaceNum, double sdfThreshold);
+	void DeleteTreeNodeWithLessSDF(double sdfThreshold);
+	void HelperDeleteTreeNodeWithLessSDF(TreeNode* pTreeNode, double sdfThreshold);
+	void UpdateTreeNode();
+	void HelperUpdateTreeNode(TreeNode* pTreeNode);
+	void UpdateTreeNodeFaceNum(TreeNode* pTreeNode);
+	int HelperUpdateTreeNodeFaceNum(TreeNode* pTreeNode);
+	void UpdateTreeNodeSDF(TreeNode* pTreeNode);
+	double HelperUpdateTreeNodeSDF(TreeNode* pTreeNode);
+	void DeleteTreeNode(TreeNode* pTreeNode);
+	bool isLeaf(TreeNode* pTreeNode);
+	bool isJoint(TreeNode* pTreeNode);
+	bool SimplifyInFinalMethod(TreeNode* pTreeNode, int& restFaceNum, int& targetNum);
+	int TreeNodesSum(TreeNode* tn);
+	void BuildFinalMeshFromMeshTree(TreeNode* root);
+	void EstimateSimplifyTarget(int &targetFaceNum, float &targetSDF);
 
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);
@@ -310,6 +350,10 @@ public:
 	afx_msg void OnSerializeWrite();
 	afx_msg void OnSerializeRead();
 	afx_msg void OnQuadricSimp();
+	afx_msg void OnFinalmethod();
+
+	void RepairHole();
+
 };
 
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp

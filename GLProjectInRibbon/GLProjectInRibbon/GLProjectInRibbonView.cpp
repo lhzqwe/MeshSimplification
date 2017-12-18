@@ -74,6 +74,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_SERIALIZE_WRITE, &CGLProjectInRibbonView::OnSerializeWrite)
 	ON_COMMAND(ID_SERIALIZE_READ, &CGLProjectInRibbonView::OnSerializeRead)
 	ON_COMMAND(ID_QUADRICSIMP, &CGLProjectInRibbonView::OnQuadricSimp)
+	ON_COMMAND(ID_FINALMETHOD, &CGLProjectInRibbonView::OnFinalmethod)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -118,7 +119,7 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 
 	TimeEnd();
 
-	DrawTextInfo();
+	//DrawTextInfo();
 
 	SwapBuffers(pDC->m_hDC);
 }
@@ -198,25 +199,46 @@ void CGLProjectInRibbonView::OnOpenbutton()
 	CFileDialog openFileDlg(isOpen, defaultDir, fileName, OFN_HIDEREADONLY | OFN_READONLY, filter, NULL);
 	openFileDlg.GetOFN().lpstrInitialDir = L"D:\\MyProject\\MyOpenGL\\OBJ";
 	INT_PTR result = openFileDlg.DoModal();
-	CString filePath = defaultDir + "\\bunny.obj";
+	CString filePath = defaultDir + "\\SWD4-8FRF-10.obj";
 	if (result == IDOK) {
 		filePath = openFileDlg.GetPathName();
+		CT2CA pszConvertedAnsiString(filePath);
+		string tmp(pszConvertedAnsiString);
+		m_ModelName = tmp.substr(tmp.find_last_of("\\") + 1, tmp.find_last_of(".") - tmp.find_last_of("\\") - 1);
+	}
+	else
+	{
+		MessageBox(_T("请重新选择Mesh!"));
+		return;
 	}
 	
 	m_FilePath = filePath;
 
+	if (m_Model != nullptr)
+	{
+		m_Polyhedron.clear();
+		delete m_Model;
+		m_Model = nullptr;
+		m_NormalMesh.indices.clear();
+		m_NormalMesh.vertices.clear();
+		m_NormalMesh.textures.clear();
+		m_NormalMesh.RefreshGpuData();
+	}
+	
 	CT2CA pszConvertedAnsiString(m_FilePath);
 	string tmp(pszConvertedAnsiString);
-	m_Model = new Model((GLchar *)tmp.c_str());
 	SMeshLib::IO::importOBJ(tmp, &m_Polyhedron);
 	assert(!m_Polyhedron.empty());
+	//m_Model = new Model((GLchar *)tmp.c_str());
 	
-	AdjustCameraView(m_Model);
+	//AdjustCameraView(m_Model);
 
-	auto meshes = m_Model->getModelMeshes();
-	m_NormalMesh = GenerateFlatMesh(meshes[0]);
+	//auto meshes = m_Model->getModelMeshes();
+	//m_NormalMesh = GenerateFlatMesh(meshes[0]);
 
-	OnNormalDisplay();
+	//OnSerializeRead();
+
+	//OnNormalDisplay();
 
 	Invalidate(TRUE);
 }
@@ -326,6 +348,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_pFlatMesh = nullptr;
 	m_pSmoothMesh = nullptr;
 
+	m_MeshTree = nullptr;
 
 
 	// New codes end.
@@ -741,13 +764,13 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	// create a property-map for SDF values
 	boost::associative_property_map<Facet_double_map> sdf_property_map(internal_sdf_map);
 	// compute SDF values using default parameters for number of rays, and cone angle
-	CGAL::sdf_values(m_Polyhedron, sdf_property_map);
+	CGAL::sdf_values(m_Polyhedron, sdf_property_map, 1.0 / 2.0 * CGAL_PI, 30, true);
 	// create a property-map for segment-ids
 	boost::associative_property_map<Facet_int_map> segment_property_map(internal_segment_map);
 	// segment the mesh using default parameters for number of levels, and smoothing lambda
 	// Any other scalar values can be used instead of using SDF values computed using the CGAL function
 	const std::size_t number_of_clusters = 4; // use 4 clusters in soft clustering
-	const double smoothing_lambda = 0.1; // importance of surface features, suggested to be in-between [0,1]
+	const double smoothing_lambda = 0.3; // importance of surface features, suggested to be in-between [0,1]
 	// Note that we can use the same SDF values (sdf_property_map) over and over again for segmentation.
 	// This feature is relevant for segmenting the mesh several times with different parameters.
 	number_of_segments = CGAL::segmentation_from_sdf_values(m_Polyhedron, sdf_property_map, segment_property_map, number_of_clusters, smoothing_lambda);
@@ -759,18 +782,20 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	GenerateUniqueColorList(number_of_segments, colorList, excludedColor);
 	m_MeshList.resize(number_of_segments);
 
-//	double maxSDF = DOUBLE_MIN;
-//	int indexMaxSDF = -1;
-//	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
-//		facet_it != m_Polyhedron.facets_end(); ++facet_it)
-//	{
-//		if (internal_sdf_map[facet_it] > maxSDF)
-//		{
-//			maxSDF = internal_sdf_map[facet_it];
-//			indexMaxSDF = internal_segment_map[facet_it];
-//		}
-//	}
-//
+	double maxSDF = DOUBLE_MIN;
+	int indexMaxSDF = -1;
+	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
+		facet_it != m_Polyhedron.facets_end(); ++facet_it)
+	{
+		if (internal_sdf_map[facet_it] > maxSDF)
+		{
+			maxSDF = internal_sdf_map[facet_it];
+			indexMaxSDF = internal_segment_map[facet_it];
+		}
+	}
+
+	m_IndexMaxSDF = indexMaxSDF;
+
 //	//m_MeshList[indexMaxSDF].SetDelete();
 //
 	for (CgalPolyhedron::Facet_iterator facet_it = m_Polyhedron.facets_begin();
@@ -793,6 +818,11 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 			++indiceIndex;
 			++hec;
 		} while (he_begin != hec);
+
+		//update mesh sdf & faceNum
+		m_MeshList[meshIndex].sdf += internal_sdf_map[facet_it];
+		m_MeshList[meshIndex].faceNum++;
+
 		//calculate normals
 		assert(points.size() == 3);
 		glm::vec3 v1 = points[1] - points[0];
@@ -803,19 +833,24 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 		m_MeshList[meshIndex].vertices[lastIndex - 1].Normal = vNormal;
 		m_MeshList[meshIndex].vertices[lastIndex - 2].Normal = vNormal;
 	}
-//	
-//	//TO DO : mesh simplification
-//	//adjacent graph
-//	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
-//
-//	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
-//		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
-//	{
-//		int indexMesh = segment_property_map[halfedge_it->facet()];
-//		int indexOppositeMesh = segment_property_map[halfedge_it->opposite()->facet()];
-//		if (indexMesh == indexOppositeMesh) continue;
-//		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
-//	}
+
+	//Caculate average sdf value
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		m_MeshList[i].sdf /= m_MeshList[i].faceNum;
+	}
+
+	//adjacent graph
+	m_MeshGraph = vector<vector<int>>(number_of_segments, vector<int>(number_of_segments, 0));
+
+	for (CgalPolyhedron::Halfedge_iterator halfedge_it = m_Polyhedron.halfedges_begin();
+		halfedge_it != m_Polyhedron.halfedges_end(); ++halfedge_it)
+	{
+		int indexMesh = segment_property_map[halfedge_it->facet()];
+		int indexOppositeMesh = segment_property_map[halfedge_it->opposite()->facet()];
+		if (indexMesh == indexOppositeMesh) continue;
+		m_MeshGraph[indexMesh][indexOppositeMesh] = 1;
+	}
 //
 //	//construct tree
 //	ConstructTree(indexMaxSDF);
@@ -1375,6 +1410,47 @@ void CGLProjectInRibbonView::HelperConstructTree(TreeNode* pTreeNode, vector<boo
 	}
 }
 
+void CGLProjectInRibbonView::ConstructTreeBFS(int indexMeshWithSDF)
+{
+	m_MeshTree = new TreeNode(indexMeshWithSDF);
+	m_MeshTree->avgSDF = m_MeshList[indexMeshWithSDF].sdf;
+	m_MeshTree->singleSDF = m_MeshList[indexMeshWithSDF].sdf;
+	m_MeshTree->faceNum = m_MeshList[indexMeshWithSDF].faceNum;
+	m_MeshTree->singleFaceNum = m_MeshList[indexMeshWithSDF].faceNum;
+
+	queue<TreeNode*> queueBFS;
+	queueBFS.push(m_MeshTree);
+	vector<bool> usedMesh(number_of_segments, false);
+
+	usedMesh[indexMeshWithSDF] = true;
+
+	int meshIndex;
+	TreeNode* treeNode = nullptr;
+	while (!queueBFS.empty())
+	{
+		treeNode = queueBFS.front();
+		queueBFS.pop();
+		meshIndex = treeNode->indexMesh;
+
+		auto adjacentMeshes = m_MeshGraph[meshIndex];
+
+		for (int i = 0; i < adjacentMeshes.size(); ++i)
+		{
+			if (adjacentMeshes[i] == 1 && !usedMesh[i])
+			{
+				TreeNode* newNode = new TreeNode(i);
+				newNode->avgSDF = m_MeshList[i].sdf;
+				newNode->singleSDF = m_MeshList[i].sdf;
+				newNode->faceNum = m_MeshList[i].faceNum;
+				newNode->singleFaceNum = m_MeshList[i].faceNum;
+				treeNode->childNodes.push_back(newNode);
+				queueBFS.push(newNode);
+				usedMesh[i] = true;
+			}
+		}
+	}
+}
+
 void CGLProjectInRibbonView::DeleteTree()
 {
 	if (m_MeshTree == nullptr) return;
@@ -1394,6 +1470,7 @@ void CGLProjectInRibbonView::HelperDeleteTree(TreeNode* pTreeNode)
 		}
 	}
 	delete pTreeNode;
+	pTreeNode = nullptr;
 }
 
 void CGLProjectInRibbonView::SimplifyWithDelete()
@@ -1464,16 +1541,16 @@ void CGLProjectInRibbonView::RepairMeshHole()
 
 void CGLProjectInRibbonView::ConvertFromMeshToCgalPolyhedron(const Mesh & pMesh, CgalPolyhedron & pPolyhedron)
 {
-	assert(pMesh.vertices.size() != 0);
-	assert(pMesh.indices.size() != 0);
+	//assert(pMesh.vertices.size() != 0);
+	//assert(pMesh.indices.size() != 0);
 	
 	SMeshLib::IO::importFromMesh(pMesh, &pPolyhedron);
 }
 
 void CGLProjectInRibbonView::ConvertFromMeshToSurfaceMeshPolyhedron(const Mesh & pMesh, Surface_mesh & pSurfaceMesh)
 {
-	assert(pMesh.vertices.size() != 0);
-	assert(pMesh.indices.size() != 0);
+	//assert(pMesh.vertices.size() != 0);
+	//assert(pMesh.indices.size() != 0);
 
 	SMeshLib::IO::importFromMesh(pMesh, &pSurfaceMesh);
 }
@@ -1671,7 +1748,7 @@ void CGLProjectInRibbonView::OnDeleteSimp()
 			++hec;
 		} while (he_begin != hec);
 		//calculate normals
-		assert(points.size() == 3);
+		//assert(points.size() == 3);
 		glm::vec3 v1 = points[1] - points[0];
 		glm::vec3 v2 = points[2] - points[1];
 		glm::vec3 vNormal = glm::cross(v1, v2);
@@ -1690,13 +1767,15 @@ void CGLProjectInRibbonView::OnSerializeWrite()
 {
 	// TODO:  在此添加命令处理程序代码
 
-	assert(!m_MeshList.empty());
+	//assert(!m_MeshList.empty());
 	string outFileName = "model.mseg";
 	ofstream ofs(outFileName, std::ios::out);
 
 	for (int i = 0; i < m_MeshList.size(); ++i)
 	{
 		ofs << "m" << " " << m_MeshList[i].color.R << " " << m_MeshList[i].color.G << " " << m_MeshList[i].color.B << endl;
+		ofs << m_MeshList[i].faceNum << endl;
+		ofs << m_MeshList[i].sdf << endl;
 		for (const auto & v : m_MeshList[i].vertices)
 		{
 			ofs << "v" << " "
@@ -1730,9 +1809,11 @@ void CGLProjectInRibbonView::OnSerializeRead()
 	// TODO:  在此添加命令处理程序代码
 	m_MeshList.clear();
 
-	string inFileName = "model.mseg";
-	ifstream ifs(inFileName, std::ios::in);
-	assert(ifs.is_open());
+	m_InFileName = m_ModelName + ".mseg";
+	ifstream ifs(m_InFileName, std::ios::in);
+	//assert(ifs.is_open());
+
+	m_MeshList.clear();
 
 	string token;
 	Mesh newMesh;
@@ -1745,6 +1826,7 @@ void CGLProjectInRibbonView::OnSerializeRead()
 		if (token == "m")
 		{
 			ifs >> newMesh.color.R >> newMesh.color.G >> newMesh.color.B;
+			ifs >> newMesh.faceNum >> newMesh.sdf;
 		}
 		else if (token == "v")
 		{			
@@ -1768,8 +1850,8 @@ void CGLProjectInRibbonView::OnSerializeRead()
 		}
 	}
 
-	inFileName = "model.adjg";
-	ifstream ifsMeshGraph(inFileName, std::ios::in);
+	m_InFileName = m_ModelName + ".adjg";
+	ifstream ifsMeshGraph(m_InFileName, std::ios::in);
 
 	m_MeshGraph.clear();
 	ifsMeshGraph >> number_of_segments;
@@ -1853,12 +1935,12 @@ void CGLProjectInRibbonView::OnQuadricSimp()
 	{
 		if (hit->is_border()){
 			--nb_border_edges;
-			assert(constrained_edges[hit] ==
+			/*assert(constrained_edges[hit] ==
 				std::make_pair(hit->opposite()->vertex()->point(),
-				hit->vertex()->point()));
+				hit->vertex()->point()));*/
 		}
 	}
-	assert(nb_border_edges == 0);
+	//assert(nb_border_edges == 0);
 
 	//Update Mesh List
 
@@ -1885,7 +1967,7 @@ void CGLProjectInRibbonView::OnQuadricSimp()
 			++hec;
 		} while (he_begin != hec);
 		//calculate normals
-		assert(points.size() == 3);
+		//assert(points.size() == 3);
 		glm::vec3 v1 = points[1] - points[0];
 		glm::vec3 v2 = points[2] - points[1];
 		glm::vec3 vNormal = glm::cross(v1, v2);
@@ -1898,4 +1980,476 @@ void CGLProjectInRibbonView::OnQuadricSimp()
 	m_MeshList[deletedMeshIndex].SetExist();
 
 	OnSegmentationDisplay();
+}
+
+void CGLProjectInRibbonView::SimplifyFinalMethod(int targetFaceNum, double sdfThreshold)
+{
+	//assert(m_MeshTree != nullptr);
+
+	while (true)
+	{
+		//set tag isDeleted = true if sdf is less than the threshold
+		DeleteTreeNodeWithLessSDF(sdfThreshold);
+
+		//Update tree and each node's faceNum according to the tag
+		UpdateTreeNode();
+
+		if (m_MeshTree->faceNum < targetFaceNum) return;
+
+		if (m_MeshList[m_MeshTree->indexMesh].faceNum > targetFaceNum)
+		{
+			//reserve main body
+			/*for (int i = 0; i < m_MeshTree->childNodes.size(); ++i)
+			{
+			HelperDeleteTree(m_MeshTree->childNodes[i]);
+			}
+			m_MeshTree->childNodes.clear();
+			return;		*/
+
+			sort(m_MeshTree->childNodes.begin(), m_MeshTree->childNodes.end(),
+				[](TreeNode* &lhs, TreeNode* &rhs) { return lhs->faceNum / lhs->avgSDF > rhs->faceNum / rhs->avgSDF; });
+
+			for (int i = 1; i < m_MeshTree->childNodes.size(); ++i)
+			{
+				m_MeshTree->childNodes[i]->isDeleted = true;
+			}
+
+			UpdateTreeNode();
+
+			m_MeshTree->singleFaceNum = 300;
+			m_MeshTree->childNodes[0]->singleFaceNum --;
+
+			return;
+		}
+
+		if (SimplifyInFinalMethod(m_MeshTree, m_MeshTree->faceNum, targetFaceNum)) {
+			UpdateTreeNode();
+			return;
+		}
+	}
+
+}
+
+bool CGLProjectInRibbonView::SimplifyInFinalMethod(TreeNode* pTreeNode, int& restFaceNum, int& targetNum)
+{
+	if (pTreeNode == nullptr) return false;
+
+	sort(pTreeNode->childNodes.begin(), pTreeNode->childNodes.end(),
+		[](TreeNode* &lhs, TreeNode* &rhs) { return lhs->faceNum / lhs->avgSDF > rhs->faceNum / rhs->avgSDF; });
+
+	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	{
+		if (isLeaf(pTreeNode->childNodes[i]))
+		{		
+			pTreeNode->childNodes[i]->faceNum -= pTreeNode->childNodes[i]->singleFaceNum / 2;
+			restFaceNum -= pTreeNode->childNodes[i]->singleFaceNum / 2;
+			pTreeNode->childNodes[i]->singleFaceNum -= (pTreeNode->childNodes[i]->singleFaceNum / 2);
+			pTreeNode->childNodes[i]->avgSDF /= 2;
+			pTreeNode->childNodes[i]->singleSDF /= 2;
+			if (restFaceNum < targetNum) return true;
+		}
+		else
+		{
+			if (isJoint(pTreeNode->childNodes[i]))
+			{
+				restFaceNum -= pTreeNode->childNodes[i]->singleFaceNum / 9;
+				pTreeNode->childNodes[i]->faceNum -= pTreeNode->childNodes[i]->singleFaceNum / 9;
+				pTreeNode->childNodes[i]->singleFaceNum -= (pTreeNode->childNodes[i]->singleFaceNum / 9);
+				pTreeNode->childNodes[i]->avgSDF = pTreeNode->childNodes[i]->avgSDF * 8 / 9;
+				pTreeNode->childNodes[i]->singleSDF = pTreeNode->childNodes[i]->singleSDF * 8 / 9;
+				if (restFaceNum < targetNum) return true;
+			}
+
+			if (SimplifyInFinalMethod(pTreeNode->childNodes[i], restFaceNum, targetNum))
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+bool CGLProjectInRibbonView::isLeaf(TreeNode* pTreeNode)
+{
+	return pTreeNode != nullptr && pTreeNode->childNodes.empty();
+}
+
+bool CGLProjectInRibbonView::isJoint(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr || pTreeNode->childNodes.empty()) return false;
+
+	double rootV = pTreeNode->faceNum / pTreeNode->avgSDF;
+
+	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	{
+		if (pTreeNode->childNodes[i]->faceNum / pTreeNode->childNodes[i]->avgSDF * 2 < rootV)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void CGLProjectInRibbonView::DeleteTreeNode(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr) return;
+
+	m_MeshList[pTreeNode->indexMesh].SetDelete();
+	if (!pTreeNode->childNodes.empty())
+	{
+		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		{
+			DeleteTreeNode(pTreeNode->childNodes[i]);
+		}
+	}
+}
+
+void CGLProjectInRibbonView::DeleteTreeNodeWithLessSDF(double sdfThreshold)
+{
+	HelperDeleteTreeNodeWithLessSDF(m_MeshTree, sdfThreshold);
+}
+
+void CGLProjectInRibbonView::HelperDeleteTreeNodeWithLessSDF(TreeNode* pTreeNode, double sdfThreshold)
+{
+	if (pTreeNode == nullptr) return;
+
+	if (pTreeNode->childNodes.empty())
+	{
+		if (pTreeNode->singleSDF < sdfThreshold)
+		{
+			pTreeNode->isDeleted = true;
+		}
+	}
+	else
+	{
+		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		{
+			HelperDeleteTreeNodeWithLessSDF(pTreeNode->childNodes[i], sdfThreshold);
+		}
+	}
+}
+
+void CGLProjectInRibbonView::UpdateTreeNode()
+{
+	HelperUpdateTreeNode(m_MeshTree);
+	UpdateTreeNodeFaceNum(m_MeshTree);
+	UpdateTreeNodeSDF(m_MeshTree);
+}
+
+void CGLProjectInRibbonView::UpdateTreeNodeFaceNum(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr || pTreeNode->childNodes.empty()) return;
+	
+	pTreeNode->faceNum = HelperUpdateTreeNodeFaceNum(pTreeNode);
+}
+
+int CGLProjectInRibbonView::HelperUpdateTreeNodeFaceNum(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr) return 0;
+	if (pTreeNode->childNodes.empty()) return pTreeNode->faceNum;
+
+	int faceSum = pTreeNode->singleFaceNum;
+	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	{
+		faceSum += HelperUpdateTreeNodeFaceNum(pTreeNode->childNodes[i]);
+	}
+	pTreeNode->faceNum = faceSum;
+	return pTreeNode->faceNum;
+}
+
+void CGLProjectInRibbonView::UpdateTreeNodeSDF(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr || pTreeNode->childNodes.empty()) return;
+
+	pTreeNode->avgSDF = HelperUpdateTreeNodeSDF(pTreeNode);
+}
+
+double CGLProjectInRibbonView::HelperUpdateTreeNodeSDF(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr) return 0.0f;
+	if (pTreeNode->childNodes.empty()) return pTreeNode->avgSDF;
+
+	double sdf = pTreeNode->singleSDF;
+	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	{
+		sdf += HelperUpdateTreeNodeSDF(pTreeNode->childNodes[i]);
+	}
+	pTreeNode->avgSDF = sdf;
+	return pTreeNode->avgSDF;
+}
+
+void CGLProjectInRibbonView::HelperUpdateTreeNode(TreeNode* pTreeNode)
+{
+	if (pTreeNode == nullptr) return;
+
+	if (!pTreeNode->childNodes.empty())
+	{
+		auto & nodes = pTreeNode->childNodes;
+		int p = -1, q = -1;
+		for (int i = 0; i < nodes.size(); ++i)
+		{
+			if (!nodes[i]->isDeleted)
+			{
+				++p;
+				swap(nodes[p], nodes[i]);
+				++q;
+			}
+			else
+			{
+				++q;
+			}
+		}
+
+		auto remove_nodes = remove_if(pTreeNode->childNodes.begin(), pTreeNode->childNodes.end(), [](TreeNode* & tn) { return tn->isDeleted; });
+		
+		if (remove_nodes != pTreeNode->childNodes.end())
+		{
+			for (vector<TreeNode*>::iterator it = remove_nodes; it != pTreeNode->childNodes.end(); ++it)
+			{
+				HelperDeleteTree(*it);
+			}
+			pTreeNode->childNodes.erase(remove_nodes, pTreeNode->childNodes.end());
+		}
+	}
+
+	if (!pTreeNode->childNodes.empty())
+	{
+		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		{
+			HelperUpdateTreeNode(pTreeNode->childNodes[i]);
+		}
+	}
+}
+
+void CGLProjectInRibbonView::OnFinalmethod()
+{
+	// TODO:  在此添加命令处理程序代码
+	if (m_MeshTree != nullptr) DeleteTree();
+
+	ConstructTreeBFS(m_IndexMaxSDF);
+
+	int targetFaceNum = 0;
+	float targetSDF = 0.0f;
+	EstimateSimplifyTarget(targetFaceNum, targetSDF);
+
+	//targetFaceNum = 1130;
+	SimplifyFinalMethod(targetFaceNum, targetSDF);
+
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		m_MeshList[i].SetDelete();
+	}
+
+	BuildFinalMeshFromMeshTree(m_MeshTree);
+	
+	CombineMesh();
+
+	RepairHole();
+
+	//OnSegmentationDisplay();
+	OnSimplifiedDisplay();
+}
+
+void CGLProjectInRibbonView::BuildFinalMeshFromMeshTree(TreeNode* root)
+{
+	if (root == nullptr) return;
+
+	int meshIndex = root->indexMesh;
+
+	if (root->singleFaceNum < m_MeshList[root->indexMesh].faceNum)
+	{
+		CombineTheMesh(meshIndex);
+
+		Surface_mesh surface_mesh;
+		ConvertFromMeshToSurfaceMeshPolyhedron(m_CombinedMesh, surface_mesh);
+
+		// map used to check that constrained_edges and the points of its vertices
+		// are preserved at the end of the simplification
+		std::map<Surface_mesh::Halfedge_handle, std::pair<Point_3, Point_3> >constrained_edges;
+		std::size_t nb_border_edges = 0;
+		for (Surface_mesh::Halfedge_iterator hit = surface_mesh.halfedges_begin(),
+			hit_end = surface_mesh.halfedges_end();
+			hit != hit_end; ++hit)
+		{
+			if (hit->is_border()){
+				constrained_edges[hit] = std::make_pair(hit->opposite()->vertex()->point(),
+					hit->vertex()->point());
+				++nb_border_edges;
+			}
+		}
+		// Contract the surface mesh as much as possible
+		SMS::Count_stop_predicate<Surface_mesh> stop(root->singleFaceNum);
+		Border_is_constrained_edge_map bem(surface_mesh);
+		// This the actual call to the simplification algorithm.
+		// The surface mesh and stop conditions are mandatory arguments.
+		// The index maps are needed because the vertices and edges
+		// of this surface mesh lack an "id()" field.
+		int r = SMS::edge_collapse
+			(surface_mesh
+			, stop
+			, CGAL::parameters::vertex_index_map(get(CGAL::vertex_external_index, surface_mesh))
+			.halfedge_index_map(get(CGAL::halfedge_external_index, surface_mesh))
+			.edge_is_constrained_map(bem)
+			.get_cost(SMS::LindstromTurk_cost<Surface_mesh>())
+			.get_placement(Placement(bem))
+			);
+		//std::cout << "\nFinished...\n" << r << " edges removed.\n"
+		//<< (surface_mesh.size_of_halfedges()) << " final edges.\n";
+		//std::ofstream os("SimpOut.off"); os << surface_mesh;
+		// now check!
+		for (Surface_mesh::Halfedge_iterator hit = surface_mesh.halfedges_begin(),
+			hit_end = surface_mesh.halfedges_end();
+			hit != hit_end; ++hit)
+		{
+			if (hit->is_border()){
+				--nb_border_edges;
+				/*assert(constrained_edges[hit] ==
+					std::make_pair(hit->opposite()->vertex()->point(),
+					hit->vertex()->point()));*/
+			}
+		}
+		//assert(nb_border_edges == 0);
+
+		//Update Mesh List
+
+		m_MeshList[meshIndex].vertices.clear();
+		m_MeshList[meshIndex].indices.clear();
+
+		for (Surface_mesh::Facet_iterator facet_it = surface_mesh.facets_begin();
+			facet_it != surface_mesh.facets_end(); ++facet_it)
+		{
+			int verticeIndex = m_MeshList[meshIndex].vertices.size();
+			int indiceIndex = m_MeshList[meshIndex].indices.size();
+			Surface_mesh::Halfedge_around_facet_circulator hec = facet_it->facet_begin();// get half edge handle
+			Surface_mesh::Halfedge_handle he_begin = hec;
+			Surface_mesh::Vertex_handle v;
+			vector<glm::vec3> points;//points for calculate normals
+			do
+			{
+				v = hec->vertex();
+				Surface_mesh::Point p = v->point();
+				m_MeshList[meshIndex].vertices.push_back(Vertex(glm::vec3(p.x(), p.y(), p.z()), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+				m_MeshList[meshIndex].indices.push_back(indiceIndex);
+				points.push_back(glm::vec3(p.x(), p.y(), p.z()));
+				++indiceIndex;
+				++hec;
+			} while (he_begin != hec);
+			//calculate normals
+			//assert(points.size() == 3);
+			glm::vec3 v1 = points[1] - points[0];
+			glm::vec3 v2 = points[2] - points[1];
+			glm::vec3 vNormal = glm::cross(v1, v2);
+			int lastIndex = m_MeshList[meshIndex].vertices.size() - 1;
+			m_MeshList[meshIndex].vertices[lastIndex].Normal = vNormal;
+			m_MeshList[meshIndex].vertices[lastIndex - 1].Normal = vNormal;
+			m_MeshList[meshIndex].vertices[lastIndex - 2].Normal = vNormal;
+		}
+	}
+
+	m_MeshList[meshIndex].SetExist();
+
+	if (!root->childNodes.empty())
+	{
+		for (int i = 0; i < root->childNodes.size(); ++i)
+		{
+			BuildFinalMeshFromMeshTree(root->childNodes[i]);
+		}
+	}
+}
+
+int CGLProjectInRibbonView::TreeNodesSum(TreeNode* tn)
+{
+	if (tn == nullptr) return -1;
+	if (tn->childNodes.empty()) return 1;
+	
+	int sum = 1;
+	for (int i = 0; i < tn->childNodes.size(); ++i)
+	{
+		sum += TreeNodesSum(tn->childNodes[i]);
+	}
+	return sum;
+}
+
+void CGLProjectInRibbonView::EstimateSimplifyTarget(int &targetFaceNum, float &targetSDF)
+{
+	int meshListFaceNum = 0;
+	double minSdf = 10000.0f;
+	for (int i = 0; i < m_MeshList.size(); ++i)
+	{
+		meshListFaceNum += m_MeshList[i].faceNum;
+		minSdf = min(minSdf, m_MeshList[i].sdf);
+	}
+	targetFaceNum = meshListFaceNum / 4;
+	targetSDF = minSdf + 0.00001f;
+}
+
+void CGLProjectInRibbonView::RepairHole()
+{
+	CgalPolyhedron tmpPolyhedron;
+	ConvertFromMeshToCgalPolyhedron(m_CombinedMesh, tmpPolyhedron);
+
+	unsigned int nb_holes = 0;
+	BOOST_FOREACH(Halfedge_handle h, halfedges(tmpPolyhedron))
+	{
+		if (h->is_border())
+		{
+			vector<Facet_handle> patch_facets;
+			vector<Vertex_handle> patch_vertices;
+			bool success = CGAL::cpp11::get<0>(
+				CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(
+				tmpPolyhedron,
+				h,
+				back_inserter(patch_facets),
+				back_inserter(patch_vertices),
+				CGAL::Polygon_mesh_processing::parameters::vertex_point_map(get(CGAL::vertex_point, tmpPolyhedron)).geom_traits(Kernel())));
+			cout << "Number of facets in constructed patch: " << patch_facets.size() << endl;
+			cout << "Number of vertices in constructed patch: " << patch_vertices.size() << endl;
+			cout << "Fairing: " << (success ? "succeeded" : "Failed") << endl;
+			++nb_holes;
+		}
+	}
+
+	cout << endl;
+	cout << nb_holes << "holes have been filled" << endl;
+	std::ofstream out("filledTmp.off");
+	out.precision(17);
+	out << tmpPolyhedron << endl;
+
+	//Extract mesh from simplified polyhedron
+	m_SimplifiedMesh.vertices.clear();
+	m_SimplifiedMesh.indices.clear();
+	m_SimplifiedMesh.textures.clear();
+
+	//Simplified Flat Mesh
+	for (CgalPolyhedron::Facet_iterator facet_it = tmpPolyhedron.facets_begin();
+		facet_it != tmpPolyhedron.facets_end(); ++facet_it)
+	{
+		int verticeIndex = m_SimplifiedMesh.vertices.size();
+		int indiceIndex = m_SimplifiedMesh.indices.size();
+		Halfedge_around_facet_circulator hec = facet_it->facet_begin();// get half edge handle
+		Halfedge_handle he_begin = hec;
+		Vertex_handle v;
+		vector<glm::vec3> points;//points for calculate normals
+		do
+		{
+			v = hec->vertex();
+			Point p = v->point();
+			m_SimplifiedMesh.vertices.push_back(Vertex(glm::vec3(p.x(), p.y(), p.z()), glm::vec3(0.0, 0.0, 0.0), glm::vec2(0.0, 0.0)));
+			m_SimplifiedMesh.indices.push_back(indiceIndex);
+			points.push_back(glm::vec3(p.x(), p.y(), p.z()));
+			++indiceIndex;
+			++hec;
+		} while (he_begin != hec);
+		//calculate normals
+		//assert(points.size() == 3);
+		glm::vec3 v1 = points[1] - points[0];
+		glm::vec3 v2 = points[2] - points[1];
+		glm::vec3 vNormal = glm::cross(v1, v2);
+		int lastIndex = m_SimplifiedMesh.vertices.size() - 1;
+		m_SimplifiedMesh.vertices[lastIndex].Normal = vNormal;
+		m_SimplifiedMesh.vertices[lastIndex - 1].Normal = vNormal;
+		m_SimplifiedMesh.vertices[lastIndex - 2].Normal = vNormal;
+	}
 }

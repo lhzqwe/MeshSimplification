@@ -43,6 +43,16 @@ void Model::loadModel(string path)
 	this->processNode(scene->mRootNode, scene);
 }
 
+void Model::LoadModel(string path)
+{
+	/*ifstream ifs;
+	ifs.open(path);
+	assert(ifs.good == true);
+
+	string in_word;*/
+
+}
+
 void Model::processNode(aiNode* node, const aiScene* scene)
 {
 	//Process each mesh located at the current node

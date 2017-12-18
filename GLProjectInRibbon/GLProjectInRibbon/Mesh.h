@@ -54,6 +54,9 @@ public:
 	vector<Texture> textures;
 	Color color;
 
+	int faceNum;
+	double sdf;
+
 	//Mesh Simplification Operator
 	bool deleted;
 
@@ -68,6 +71,7 @@ public:
 public:
 	void SetDelete();
 	void SetExist();
+	void RefreshGpuData();
 
 	bool isDeleted();
 
