@@ -199,35 +199,5 @@ vector<Mesh> Model::getModelMeshes()
 	return this->meshes;
 }
 
-void Model::ChangeToMesh(const Simplify & simp)
-{
-	vector<Vertex> vertices;
-	for (int i = 0; i < simp.vertices.size(); i++)
-	{
-		Vertex v;
-		v.Position = glm::vec3(simp.vertices[i].p.x, simp.vertices[i].p.y, simp.vertices[i].p.z);
-		v.Normal = glm::vec3(1.0f);
-		v.TexCoords = glm::vec2(1.0f);
-		vertices.push_back(v);
-	}
-	vector<GLuint> indices;
-	for (int i = 0; i < simp.triangles.size(); i++)
-	{
-		if (!simp.triangles[i].deleted)
-		{
-			for (int j = 0; j < 3; j++)
-			{
-				indices.push_back(simp.triangles[i].v[j]);
-			}
-		}
-	}
-	vector<Texture> textures;
-	meshes[0].vertices = vertices;
-	meshes[0].indices = indices;
-	face_num = indices.size();
-	meshes[0].resetupMesh();
-}
-
-
 
 

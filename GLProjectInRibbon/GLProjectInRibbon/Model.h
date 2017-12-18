@@ -15,8 +15,6 @@ using namespace std;
 #include <gtc/matrix_transform.hpp>
 #include <SOIL.h>
 
-#include "Simplify.h"
-
 #ifndef ASSIMP_H
 #define ASSIMP_H
 #include <assimp/Importer.hpp>
@@ -61,9 +59,6 @@ private:
 	vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, string typeName);
 	GLint TextureFromFile(const char* path, string directory);
 
-public:
-	//Change .obj to Mesh
-	void ChangeToMesh(const Simplify & simp);
 };
 
 #endif

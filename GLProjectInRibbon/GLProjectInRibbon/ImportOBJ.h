@@ -135,13 +135,13 @@ namespace SMeshLib {
 				// Load the data from OBJ file to HDS.
 				B.begin_surface(_numVertices, _numFacets, int((_numVertices + _numFacets - 2)*2.1));
 				
-				for (int i = 0; i < m_Mesh.vertices.size(); ++i)
+				for (unsigned int i = 0; i < m_Mesh.vertices.size(); ++i)
 				{
 					auto pos = m_Mesh.vertices[i].Position;
 					B.add_vertex(Point(pos.x, pos.y, pos.z));
 				}
 
-				for (int i = 0; i < m_Mesh.indices.size(); i += 3)
+				for (unsigned int i = 0; i < m_Mesh.indices.size(); i += 3)
 				{
 					B.begin_facet();
 					B.add_vertex_to_facet(m_Mesh.indices[i]);

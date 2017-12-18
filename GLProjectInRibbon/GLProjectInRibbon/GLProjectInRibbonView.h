@@ -10,7 +10,7 @@
 // All rights reserved.
 
 // GLProjectInRibbonView.h : interface of the CGLProjectInRibbonView class
-//
+//By LHZ
 
 #pragma once
 
@@ -18,15 +18,20 @@
 #include "Shader.h"
 #include "Camera.h"
 #include "Model.h"
-#include "Simplify.h"
 #include "GLText.h"
 #include "ImportOBJ.h"
 #include "Color.h"
 #include "Log.h"
 
+//System include
+#include <windows.h>
+
 //Standard include
 #include <map>
+#include <vector>
+#include <unordered_map>
 #include <algorithm>
+#include <cmath>
 
 //CGAL include
 #include <CGAL/Simple_cartesian.h>
@@ -47,9 +52,6 @@
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/LindstromTurk_cost.h>
 
-//System include
-#include <windows.h>
-
 // GLM Mathemtics
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
@@ -57,6 +59,11 @@
 
 // Other Libs
 #include <SOIL.h>
+
+//OpenMesh
+#include <OpenMesh/Core/IO/MeshIO.hh>
+#include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+
 
 //Define Marcos
 #define DOUBLE_MAX  10000000000000.0f
@@ -68,6 +75,15 @@
 #define DRAW_SIMPLIFIEDMESH 3
 #define DRAW_FLAT 4
 #define DRAW_SMOOTH 5
+
+#define FLOAT_MAX 1000000000000.0f
+
+//Status
+#define DELETING 0
+#define DELETED 1
+#define UNDETERMINED 2
+#define BORDER 3
+#define BORDER_CALCED 4
 
 //CGAL Data Structure
 typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
@@ -89,6 +105,118 @@ typedef SimpKernel::Point_3 Point_3;
 typedef CGAL::Polyhedron_3<SimpKernel> Surface_mesh;
 
 namespace SMS = CGAL::Surface_mesh_simplification;
+
+#pragma region New_Algorithm
+
+typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
+
+typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletingEdgeArray;
+typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> UnDeterminedEdgeArray;
+typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletedEdgeArray;
+
+typedef struct Point_
+{
+	Point_(float _x = 0.0f, float _y = 0.0f, float _z = 0.0f) :
+		x(_x),
+		y(_y),
+		z(_z)
+	{
+	};
+
+	Point_(const Point_ & p)
+	{
+		x = p.x;
+		y = p.y;
+		z = p.z;
+	}
+
+	bool operator< (const Point_ & rhs)
+	{
+		return this->x < rhs.x
+			|| (this->x == rhs.x) && (this->y < rhs.y)
+			|| (this->x == rhs.x && this->y == rhs.y) && (this->z < rhs.z);
+	}
+
+	bool operator==(const Point_ & rhs)
+	{
+		return this->x == rhs.x && this->y == rhs.y && this->z == rhs.z;
+	}
+
+	bool operator() (const Point_ & lhs, const Point_ & rhs)
+	{
+		return lhs.x < rhs.x
+			|| (lhs.x == rhs.x) && (lhs.y < rhs.y)
+			|| (lhs.x == rhs.x && lhs.y == rhs.y) && (lhs.z < rhs.z);
+	}
+
+	float x;
+	float y;
+	float z;
+} PointNA;
+
+typedef PointNA BorderPoint;
+
+typedef struct Region_
+{
+	Region_() : isDeleted(false) {};
+
+	std::vector<MyMesh::FaceHandle> faces;
+	typedef int blsIdx;
+	std::set<blsIdx> blss;
+	bool isDeleted;
+} Region;
+
+typedef struct BorderLineSegment_
+{
+	BorderLineSegment_(PointNA& _A, const PointNA& _B)
+	{
+		if (!(_A < _B))
+		{
+			A = _B;
+			B = _A;
+		}
+		else
+		{
+			A = _A;
+			B = _B;
+		}
+
+		length = glm::length(glm::vec3(A.x - B.x, A.y - B.y, A.z - B.z));
+		needsDeleted = false;
+	}
+
+	PointNA A;
+	PointNA B;
+
+	float length;
+	std::set<int> RegionIDs;
+
+	bool needsDeleted;
+} BorderLineSegment;
+
+typedef int BLS_id; // Border Line Segments idx
+typedef struct GraphNode_
+{
+	GraphNode_() : isVisited(false) {};
+
+	std::vector<std::pair<BorderPoint, BLS_id>> toPoints;
+	bool isVisited;
+} GraphNode;
+
+//生成边界点构成的最大连通区域
+typedef struct ConnectRegion_
+{
+	ConnectRegion_() : isDeleted(false), meanLength(FLOAT_MAX) {};
+
+	std::vector<BorderPoint> points;
+	typedef int blsIdx;
+	std::set<blsIdx> blss;
+	float meanLength;
+	bool isDeleted;
+
+} ConnectRegion;
+#pragma endregion New_Algorithm
+
 
 //
 // BGL property map which indicates whether an edge is marked as non-removable
@@ -144,7 +272,7 @@ class CGLProjectInRibbonView : public CView
 protected: // create from serialization only
 	CGLProjectInRibbonView();
 	DECLARE_DYNCREATE(CGLProjectInRibbonView)
-// Attributes
+	// Attributes
 public:
 	CGLProjectInRibbonDoc* GetDocument() const;
 public:
@@ -198,9 +326,6 @@ public:
 
 	bool isCameraAdjusted;
 
-
-	Simplify m_Simplify;
-
 	vector<Model> m_ModelList;
 
 	//Mesh Segmentation
@@ -228,7 +353,7 @@ public:
 	//Log System
 	Log m_Log;
 	string m_InFileName;
-// Operations
+	// Operations
 public:
 	Mesh GenerateFlatMesh(Mesh & pMesh);
 	void GenerateColorList(vector<Color>& pColorList);
@@ -266,6 +391,29 @@ public:
 	void BuildFinalMeshFromMeshTree(TreeNode* root);
 	void EstimateSimplifyTarget(int &targetFaceNum, float &targetSDF);
 
+	//New Algorithm
+public:
+	MyMesh mesh;
+	void RegionSpread(MyMesh & mesh,
+		OpenMesh::EPropHandleT<int>& edgeStatus,
+		MyMesh::FaceHandle &fh,
+		std::map<MyMesh::FaceHandle,
+		bool>
+		&mp);
+	void GraphBFS(std::map < BorderPoint, GraphNode, BorderPoint>& mp,
+		BorderPoint & startPoint,
+		ConnectRegion & newRegion);
+	void DeletedRegionAnalysis(std::vector<ConnectRegion> & cr,
+		std::map < BorderPoint,
+		GraphNode, BorderPoint>& mp,
+		std::vector<BorderLineSegment> &borderLineSegments);
+	void DeleteMyMesh(MyMesh & mesh,
+		std::vector<ConnectRegion> & cr,
+		std::vector<BorderLineSegment> &borderLineSegments,
+		std::vector<Region>& regionPs);
+	void ContourLineBasedMethod();
+
+
 public:
 	void CalculateFocusPoint(const vector<Mesh>& pMeshList);
 	void CalculateFocusPoint(Model * pModel);
@@ -274,7 +422,6 @@ public:
 	void AdjustCameraView(const Mesh& pMesh);
 	void AdjustCameraView(Model * pModel);
 	void DragBall(GLfloat ax, GLfloat ay, GLfloat bx, GLfloat by, GLfloat r);
-	void SimplifyInitialization(Model& model, Simplify& simplify);
 	void ChooseLodModel(float distance);
 	void GetFPS(double deltaTime);
 	void GLSetRenderState();
@@ -282,7 +429,7 @@ public:
 public:
 	void SetDrawingMode(int drawingMode);
 
-// Overrides
+	// Overrides
 public:
 	virtual void OnDraw(CDC* pDC);  // overridden to draw this view
 
@@ -307,7 +454,7 @@ protected:
 	virtual void OnBeginPrinting(CDC* pDC, CPrintInfo* pInfo);
 	virtual void OnEndPrinting(CDC* pDC, CPrintInfo* pInfo);
 
-// Implementation
+	// Implementation
 public:
 	virtual ~CGLProjectInRibbonView();
 #ifdef _DEBUG
@@ -317,7 +464,7 @@ public:
 
 protected:
 
-// Generated message map functions
+	// Generated message map functions
 protected:
 	afx_msg void OnFilePrintPreview();
 	afx_msg void OnRButtonUp(UINT nFlags, CPoint point);
@@ -354,10 +501,13 @@ public:
 
 	void RepairHole();
 
+	afx_msg void OnStartCLBAlgorithm();
 };
 
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const
-   { return reinterpret_cast<CGLProjectInRibbonDoc*>(m_pDocument); }
+{
+	return reinterpret_cast<CGLProjectInRibbonDoc*>(m_pDocument);
+}
 #endif
 

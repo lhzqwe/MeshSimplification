@@ -75,6 +75,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_SERIALIZE_READ, &CGLProjectInRibbonView::OnSerializeRead)
 	ON_COMMAND(ID_QUADRICSIMP, &CGLProjectInRibbonView::OnQuadricSimp)
 	ON_COMMAND(ID_FINALMETHOD, &CGLProjectInRibbonView::OnFinalmethod)
+	ON_COMMAND(ID_START, &CGLProjectInRibbonView::OnStartCLBAlgorithm)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -247,7 +248,7 @@ void CGLProjectInRibbonView::OnOpenbutton()
 void CGLProjectInRibbonView::OnSavebutton()
 {
 	// TODO:  在此添加命令处理程序代码
-	m_Simplify.write_obj("../test_out.obj");
+	//m_Simplify.write_obj("../test_out.obj");
 }
 
 
@@ -470,8 +471,8 @@ void CGLProjectInRibbonView::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
 	isDragged = true;
-	lastX = point.x;
-	lastY = point.y;
+	lastX = static_cast<GLfloat>(point.x);
+	lastY = static_cast<GLfloat>(point.y);
 
 	CView::OnLButtonDown(nFlags, point);
 }
@@ -492,9 +493,9 @@ void CGLProjectInRibbonView::OnMouseMove(UINT nFlags, CPoint point)
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
 	if (isDragged)
 	{
-		DragBall(lastX, lastY, point.x, point.y, 1.0f);
-		lastX = point.x;
-		lastY = point.y;
+		DragBall(lastX, lastY, static_cast<GLfloat>(point.x), static_cast<GLfloat>(point.y), 1.0f);
+		lastX = static_cast<GLfloat>(point.x);
+		lastY = static_cast<GLfloat>(point.y);
 		Invalidate();
 	}
 
@@ -560,7 +561,7 @@ void CGLProjectInRibbonView::CalculateFocusPoint(const vector<Mesh>& pMeshList)
 	this->yMax = yMax;
 	this->zMin = zMin;
 	this->zMax = zMax;
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>((pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 }
 
@@ -572,8 +573,8 @@ void CGLProjectInRibbonView::CalculateFocusPoint(Model * pModel)
 
 	vector<Mesh> meshes = pModel->getModelMeshes();
 
-	for (int i = 0; i < meshes.size(); ++i)
-		for (int j = 0; j < meshes[i].vertices.size(); ++j)
+	for (unsigned int i = 0; i < meshes.size(); ++i)
+		for (unsigned int j = 0; j < meshes[i].vertices.size(); ++j)
 		{
 			if (meshes[i].vertices[j].Position.x < xMin) xMin = meshes[i].vertices[j].Position.x;
 			if (meshes[i].vertices[j].Position.x > xMax) xMax = meshes[i].vertices[j].Position.x;
@@ -591,17 +592,17 @@ void CGLProjectInRibbonView::CalculateFocusPoint(Model * pModel)
 	this->yMax = yMax;
 	this->zMin = zMin;
 	this->zMax = zMax;
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>((pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 }
 
 void CGLProjectInRibbonView::AdjustCameraView(const vector<Mesh>& pMeshList)
 {
 	CalculateFocusPoint(pMeshList);
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>((pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 	m_Camera->SetPosition(0.0f, 0.0f, 2.0f * bodyDiagonal);
-	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2);
+	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2f);
 	m_Camera->SetUp(0.0f, 1.0f, 0.0f);
 	m_ProjectionMatrix = glm::perspective(45.0f, (float)m_ScreenWidth / (float)m_ScreenHeight, 10.0f, bodyDiagonal * 10);
 }
@@ -611,10 +612,10 @@ void CGLProjectInRibbonView::AdjustCameraView(Model * pModel)
 	assert(pModel != nullptr);
 
 	CalculateFocusPoint(pModel);
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>(sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 	m_Camera->SetPosition(0.0f, 0.0f, 2.0f * bodyDiagonal);
-	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2);
+	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2f);
 	m_Camera->SetUp(0.0f, 1.0f, 0.0f);
 	m_ProjectionMatrix = glm::perspective(45.0f, (float)m_ScreenWidth / (float)m_ScreenHeight, 10.0f, bodyDiagonal * 10);
 }
@@ -691,38 +692,6 @@ void CGLProjectInRibbonView::OnLoddisplay()
 	//	m_ifShowLod = true;
 	//	ChooseLodModel(distance);
 	//}
-}
-
-void CGLProjectInRibbonView::SimplifyInitialization(Model& model, Simplify& simplify)
-{
-	simplify.vertices.clear();
-	simplify.triangles.clear();
-
-	vector<Mesh> m_mesh = model.getModelMeshes();
-	for (int i = 0; i < m_mesh.size(); ++i)
-	{
-		for (int j = 0; j < m_mesh[i].vertices.size(); ++j)
-		{
-			Simplify::Vertex v;
-			v.p = vec3f(m_mesh[i].vertices[j].Position.x, m_mesh[i].vertices[j].Position.y, m_mesh[i].vertices[j].Position.z);
-			simplify.vertices.push_back(v);
-		}
-
-	}
-
-	for (int i = 0; i < m_mesh.size(); ++i)
-	{
-		for (int j = 0; j < m_mesh[i].indices.size(); j += 3)
-		{
-			Simplify::Triangle t;
-			for (int k = 0; k < 3; ++k)
-			{
-				t.v[k] = m_mesh[i].indices[j + k];
-			}
-			simplify.triangles.push_back(t);
-		}
-	}
-
 }
 
 void CGLProjectInRibbonView::ChooseLodModel(float distance)
@@ -835,7 +804,7 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 	}
 
 	//Caculate average sdf value
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		m_MeshList[i].sdf /= m_MeshList[i].faceNum;
 	}
@@ -935,7 +904,7 @@ void CGLProjectInRibbonView::OnMeshSegmentation()
 
 	//Set Color
 	assert(m_MeshList.size() == colorList.size());
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		m_MeshList[i].color = colorList[i];
 	}
@@ -960,10 +929,10 @@ void CGLProjectInRibbonView::SetupSimplifiedMesh()
 void CGLProjectInRibbonView::AdjustCameraView(const Mesh& pMesh)
 {
 	CalculateFocusPoint(pMesh);
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>((pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 	m_Camera->SetPosition(0.0f, 0.0f, 2.0f * bodyDiagonal);
-	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2);
+	m_Camera->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2f);
 	m_Camera->SetUp(0.0f, 1.0f, 0.0f);
 	m_ProjectionMatrix = glm::perspective(45.0f, (float)m_ScreenWidth / (float)m_ScreenHeight, 10.0f, bodyDiagonal * 10);
 }
@@ -991,7 +960,8 @@ void CGLProjectInRibbonView::CalculateFocusPoint(const Mesh& pMesh)
 	this->yMax = yMax;
 	this->zMin = zMin;
 	this->zMax = zMax;
-	float bodyDiagonal = sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2));
+	float bodyDiagonal = static_cast<float>
+		(sqrt(pow(xMax - xMin, 2) + pow(yMax - yMin, 2) + pow(zMax - zMin, 2)));
 	this->bodyDiagnalLength = bodyDiagonal;
 }
 
@@ -1005,7 +975,7 @@ Mesh CGLProjectInRibbonView::GenerateFlatMesh(Mesh & pMesh)
 	auto points = pMesh.vertices;
 	auto indices = pMesh.indices;
 	glm::vec3 n;
-	for (int i = 0, indice = 0; i < indices.size(); i += 3, indice += 3)
+	for (unsigned int i = 0, indice = 0; i < indices.size(); i += 3, indice += 3)
 	{
 		result.vertices.push_back(points[indices[i]]);
 		result.vertices.push_back(points[indices[i + 1]]);
@@ -1044,7 +1014,7 @@ void CGLProjectInRibbonView::GenerateColorList(vector<Color>& pColorList)
 
 int CGLProjectInRibbonView::GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor)
 {
-	int i, j, k, l;
+	unsigned int i, j, k, l;
 	int numUnique = 0;
 	double slValues[] = { 0.0, 1.0, 0.5, 0.8, 0.3, 0.6, 0.9, 0.2, 0.7, 0.4, 0.1 };
 	Color baseColors[] = {
@@ -1089,9 +1059,9 @@ int CGLProjectInRibbonView::GenerateUniqueColorList(int count, vector<Color>& pC
 				}
 
 				Color colorToInsert;
-				colorToInsert.R = newColor[0];
-				colorToInsert.G = newColor[1];
-				colorToInsert.B = newColor[2];
+				colorToInsert.R = newColor[0] * 1.0f;
+				colorToInsert.G = newColor[1] * 1.0f;
+				colorToInsert.B = newColor[2] * 1.0f;
 
 				for (l = 0; l < pExcludedColor.size(); ++l)
 				{
@@ -1134,7 +1104,7 @@ void CGLProjectInRibbonView::SetupMeshList()
 {
 	assert(!m_MeshList.empty());
 
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		m_MeshList[i].setupMesh();
 	}
@@ -1142,7 +1112,7 @@ void CGLProjectInRibbonView::SetupMeshList()
 
 void CGLProjectInRibbonView::ClearMeshSegmentationDeleteState()
 {
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		m_MeshList[i].SetExist();
 	}
@@ -1284,7 +1254,7 @@ void CGLProjectInRibbonView::DrawModelSegmentation()
 	glUniformMatrix4fv(glGetUniformLocation(m_Shader->Program, "model"), 1, GL_FALSE, glm::value_ptr(m_ModelMatrix));
 
 	//Draw Objects....................................
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		if (m_MeshList[i].isDeleted()) continue;
 		InitMaterial(m_MeshList[i].color);
@@ -1356,7 +1326,7 @@ void CGLProjectInRibbonView::DrawTextInfo()
 void CGLProjectInRibbonView::InitMaterial(Color& pColor)
 {
 	m_Shader->Use();
-	glUniform3f(glGetUniformLocation(m_Shader->Program, "material.ambient"), 0.2 * pColor.R, 0.2 * pColor.G, 0.2 * pColor.B);
+	glUniform3f(glGetUniformLocation(m_Shader->Program, "material.ambient"), 0.2f * pColor.R, 0.2f * pColor.G, 0.2f * pColor.B);
 	glUniform3f(glGetUniformLocation(m_Shader->Program, "material.diffuse"), pColor.R, pColor.G, pColor.B);
 	glUniform3f(glGetUniformLocation(m_Shader->Program, "material.specular"), 0.508273f, 0.508273f, 0.508273f);
 	glUniform1f(glGetUniformLocation(m_Shader->Program, "material.shininess"), 32.0f);
@@ -1392,7 +1362,7 @@ void CGLProjectInRibbonView::HelperConstructTree(TreeNode* pTreeNode, vector<boo
 
 	auto rowGraph = m_MeshGraph[pTreeNode->indexMesh];
 
-	for (int i = 0; i < rowGraph.size(); ++i)
+	for (unsigned int i = 0; i < rowGraph.size(); ++i)
 	{
 		if (rowGraph[i] == 1)
 		{
@@ -1434,7 +1404,7 @@ void CGLProjectInRibbonView::ConstructTreeBFS(int indexMeshWithSDF)
 
 		auto adjacentMeshes = m_MeshGraph[meshIndex];
 
-		for (int i = 0; i < adjacentMeshes.size(); ++i)
+		for (unsigned int i = 0; i < adjacentMeshes.size(); ++i)
 		{
 			if (adjacentMeshes[i] == 1 && !usedMesh[i])
 			{
@@ -1498,7 +1468,7 @@ void CGLProjectInRibbonView::HelperSimplifyWithDelete(TreeNode * pTreeNode, int 
 void CGLProjectInRibbonView::RepairMeshHole()
 {
 	int fileIndex = 0;
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		if (!m_MeshList[i].isDeleted())
 		{
@@ -1563,7 +1533,7 @@ void CGLProjectInRibbonView::CombineMesh()
 
 	map<tuple<float, float, float>, int> mp;
 
-	for (int meshIndex = 0; meshIndex < m_MeshList.size(); ++meshIndex)
+	for (unsigned int meshIndex = 0; meshIndex < m_MeshList.size(); ++meshIndex)
 	{
 		if (!m_MeshList[meshIndex].deleted)
 		{
@@ -1771,7 +1741,7 @@ void CGLProjectInRibbonView::OnSerializeWrite()
 	string outFileName = "model.mseg";
 	ofstream ofs(outFileName, std::ios::out);
 
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		ofs << "m" << " " << m_MeshList[i].color.R << " " << m_MeshList[i].color.G << " " << m_MeshList[i].color.B << endl;
 		ofs << m_MeshList[i].faceNum << endl;
@@ -1782,7 +1752,7 @@ void CGLProjectInRibbonView::OnSerializeWrite()
 				<< v.Position.x << " " << v.Position.y << " " << v.Position.z << " "
 				<< v.Normal.x << " " << v.Normal.y << " " << v.Normal.z << endl;
 		}
-		for (int j = 0; j < m_MeshList[i].indices.size(); j += 3)
+		for (unsigned int j = 0; j < m_MeshList[i].indices.size(); j += 3)
 		{
 			ofs << "f" << " " << m_MeshList[i].indices[j] << " " << m_MeshList[i].indices[j + 1] << " "<< m_MeshList[i].indices[j + 2] << endl;
 		}
@@ -1793,9 +1763,9 @@ void CGLProjectInRibbonView::OnSerializeWrite()
 	ofstream ofsMeshGraph(outFileName, std::ios::out);
 
 	ofsMeshGraph << number_of_segments << endl;
-	for (int i = 0; i < m_MeshGraph.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshGraph.size(); ++i)
 	{
-		for (int j = 0; j < m_MeshGraph[i].size(); ++j)
+		for (unsigned int j = 0; j < m_MeshGraph[i].size(); ++j)
 		{
 			ofsMeshGraph << m_MeshGraph[i][j] << " ";
 		}
@@ -1857,10 +1827,10 @@ void CGLProjectInRibbonView::OnSerializeRead()
 	ifsMeshGraph >> number_of_segments;
 	vector<int> line;
 	int number;
-	for (int i = 0; i < number_of_segments; ++i)
+	for (unsigned int i = 0; i < number_of_segments; ++i)
 	{
 		line.clear();
-		for (int j = 0; j < number_of_segments; ++j)
+		for (unsigned int j = 0; j < number_of_segments; ++j)
 		{
 			ifsMeshGraph >> number;
 			line.push_back(number);
@@ -1879,7 +1849,7 @@ void CGLProjectInRibbonView::OnQuadricSimp()
 	SimplifyWithDelete();
 
 	vector<int> deletedMeshes;
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		if (m_MeshList[i].isDeleted())
 		{
@@ -2009,7 +1979,7 @@ void CGLProjectInRibbonView::SimplifyFinalMethod(int targetFaceNum, double sdfTh
 			sort(m_MeshTree->childNodes.begin(), m_MeshTree->childNodes.end(),
 				[](TreeNode* &lhs, TreeNode* &rhs) { return lhs->faceNum / lhs->avgSDF > rhs->faceNum / rhs->avgSDF; });
 
-			for (int i = 1; i < m_MeshTree->childNodes.size(); ++i)
+			for (unsigned int i = 1; i < m_MeshTree->childNodes.size(); ++i)
 			{
 				m_MeshTree->childNodes[i]->isDeleted = true;
 			}
@@ -2037,7 +2007,7 @@ bool CGLProjectInRibbonView::SimplifyInFinalMethod(TreeNode* pTreeNode, int& res
 	sort(pTreeNode->childNodes.begin(), pTreeNode->childNodes.end(),
 		[](TreeNode* &lhs, TreeNode* &rhs) { return lhs->faceNum / lhs->avgSDF > rhs->faceNum / rhs->avgSDF; });
 
-	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 	{
 		if (isLeaf(pTreeNode->childNodes[i]))
 		{		
@@ -2081,7 +2051,7 @@ bool CGLProjectInRibbonView::isJoint(TreeNode* pTreeNode)
 
 	double rootV = pTreeNode->faceNum / pTreeNode->avgSDF;
 
-	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 	{
 		if (pTreeNode->childNodes[i]->faceNum / pTreeNode->childNodes[i]->avgSDF * 2 < rootV)
 		{
@@ -2099,7 +2069,7 @@ void CGLProjectInRibbonView::DeleteTreeNode(TreeNode* pTreeNode)
 	m_MeshList[pTreeNode->indexMesh].SetDelete();
 	if (!pTreeNode->childNodes.empty())
 	{
-		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 		{
 			DeleteTreeNode(pTreeNode->childNodes[i]);
 		}
@@ -2124,7 +2094,7 @@ void CGLProjectInRibbonView::HelperDeleteTreeNodeWithLessSDF(TreeNode* pTreeNode
 	}
 	else
 	{
-		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 		{
 			HelperDeleteTreeNodeWithLessSDF(pTreeNode->childNodes[i], sdfThreshold);
 		}
@@ -2151,7 +2121,7 @@ int CGLProjectInRibbonView::HelperUpdateTreeNodeFaceNum(TreeNode* pTreeNode)
 	if (pTreeNode->childNodes.empty()) return pTreeNode->faceNum;
 
 	int faceSum = pTreeNode->singleFaceNum;
-	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 	{
 		faceSum += HelperUpdateTreeNodeFaceNum(pTreeNode->childNodes[i]);
 	}
@@ -2172,7 +2142,7 @@ double CGLProjectInRibbonView::HelperUpdateTreeNodeSDF(TreeNode* pTreeNode)
 	if (pTreeNode->childNodes.empty()) return pTreeNode->avgSDF;
 
 	double sdf = pTreeNode->singleSDF;
-	for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+	for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 	{
 		sdf += HelperUpdateTreeNodeSDF(pTreeNode->childNodes[i]);
 	}
@@ -2188,7 +2158,7 @@ void CGLProjectInRibbonView::HelperUpdateTreeNode(TreeNode* pTreeNode)
 	{
 		auto & nodes = pTreeNode->childNodes;
 		int p = -1, q = -1;
-		for (int i = 0; i < nodes.size(); ++i)
+		for (unsigned int i = 0; i < nodes.size(); ++i)
 		{
 			if (!nodes[i]->isDeleted)
 			{
@@ -2216,7 +2186,7 @@ void CGLProjectInRibbonView::HelperUpdateTreeNode(TreeNode* pTreeNode)
 
 	if (!pTreeNode->childNodes.empty())
 	{
-		for (int i = 0; i < pTreeNode->childNodes.size(); ++i)
+		for (unsigned int i = 0; i < pTreeNode->childNodes.size(); ++i)
 		{
 			HelperUpdateTreeNode(pTreeNode->childNodes[i]);
 		}
@@ -2237,7 +2207,7 @@ void CGLProjectInRibbonView::OnFinalmethod()
 	//targetFaceNum = 1130;
 	SimplifyFinalMethod(targetFaceNum, targetSDF);
 
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		m_MeshList[i].SetDelete();
 	}
@@ -2352,7 +2322,7 @@ void CGLProjectInRibbonView::BuildFinalMeshFromMeshTree(TreeNode* root)
 
 	if (!root->childNodes.empty())
 	{
-		for (int i = 0; i < root->childNodes.size(); ++i)
+		for (unsigned int i = 0; i < root->childNodes.size(); ++i)
 		{
 			BuildFinalMeshFromMeshTree(root->childNodes[i]);
 		}
@@ -2365,7 +2335,7 @@ int CGLProjectInRibbonView::TreeNodesSum(TreeNode* tn)
 	if (tn->childNodes.empty()) return 1;
 	
 	int sum = 1;
-	for (int i = 0; i < tn->childNodes.size(); ++i)
+	for (unsigned int i = 0; i < tn->childNodes.size(); ++i)
 	{
 		sum += TreeNodesSum(tn->childNodes[i]);
 	}
@@ -2376,13 +2346,13 @@ void CGLProjectInRibbonView::EstimateSimplifyTarget(int &targetFaceNum, float &t
 {
 	int meshListFaceNum = 0;
 	double minSdf = 10000.0f;
-	for (int i = 0; i < m_MeshList.size(); ++i)
+	for (unsigned int i = 0; i < m_MeshList.size(); ++i)
 	{
 		meshListFaceNum += m_MeshList[i].faceNum;
 		minSdf = min(minSdf, m_MeshList[i].sdf);
 	}
 	targetFaceNum = meshListFaceNum / 4;
-	targetSDF = minSdf + 0.00001f;
+	targetSDF = static_cast<float>(minSdf) + 0.00001f;
 }
 
 void CGLProjectInRibbonView::RepairHole()
@@ -2452,4 +2422,316 @@ void CGLProjectInRibbonView::RepairHole()
 		m_SimplifiedMesh.vertices[lastIndex - 1].Normal = vNormal;
 		m_SimplifiedMesh.vertices[lastIndex - 2].Normal = vNormal;
 	}
+}
+
+void CGLProjectInRibbonView::RegionSpread(MyMesh & mesh, 
+	OpenMesh::EPropHandleT<int>& edgeStatus, 
+	MyMesh::FaceHandle &fh, 
+	std::map<MyMesh::FaceHandle, bool> &mp)
+{
+	if (mp.count(fh) > 0) return;
+
+	mp.insert(std::make_pair(fh, true));
+
+	MyMesh::FaceHalfedgeIter fhe_it = mesh.fh_iter(fh);
+
+	while (fhe_it.is_valid())
+	{
+		MyMesh::HalfedgeHandle heh = *fhe_it;
+		MyMesh::EdgeHandle eh = mesh.edge_handle(heh);
+		if (mesh.property(edgeStatus, eh) == DELETING)
+		{
+			mesh.property(edgeStatus, eh) = DELETED;
+			MyMesh::FaceHandle fhNew = mesh.opposite_face_handle(heh);
+			RegionSpread(mesh, edgeStatus, fhNew, mp);
+		}
+		++fhe_it;
+	}
+}
+
+void CGLProjectInRibbonView::GraphBFS(std::map < BorderPoint, GraphNode, BorderPoint>& mp,
+								   BorderPoint & startPoint, 
+								   ConnectRegion & newRegion)
+{
+	if (mp[startPoint].isVisited) return;
+
+	mp[startPoint].isVisited = true;
+	newRegion.points.push_back(startPoint);
+
+	for (const auto & i : mp[startPoint].toPoints)
+	{
+		newRegion.blss.insert(i.second);
+	}
+
+	for (auto & adjPoint : mp[startPoint].toPoints)
+	{
+		GraphBFS(mp, adjPoint.first, newRegion);
+	}
+}
+
+void CGLProjectInRibbonView::DeletedRegionAnalysis(std::vector<ConnectRegion> & cr,
+											  std::map < BorderPoint, GraphNode, BorderPoint>& mp, 
+											  std::vector<BorderLineSegment> &borderLineSegments)
+{
+	for (auto & r : cr)
+	{
+		float meanLength = 0.0f;
+		int n = 0;
+		for (auto iter = r.blss.begin(); iter != r.blss.end(); ++iter, ++n)
+		{
+			meanLength += borderLineSegments[*iter].length;
+		}
+		meanLength /= n;
+		r.meanLength = meanLength;
+	}
+
+	sort(cr.begin(), cr.end(), [](const ConnectRegion& lhs, const ConnectRegion& rhs){
+		return lhs.meanLength < rhs.meanLength;
+	});
+
+	cr[0].isDeleted = true;
+	cr[1].isDeleted = true;
+}
+
+void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
+									  std::vector<ConnectRegion> & cr,
+								      std::vector<BorderLineSegment> &borderLineSegments,
+								      std::vector<Region>& regionPs)
+{
+	for (const auto & crAuto : cr)
+	{
+		if (crAuto.isDeleted)
+		{
+			for (const auto & blssAuto : crAuto.blss)
+			{
+				borderLineSegments[blssAuto].needsDeleted = true;
+			}
+		}
+	}
+
+	for (auto & rPsAuto : regionPs)
+	{
+		bool isDeleted = false;
+		auto iter = rPsAuto.blss.begin();
+		for (; iter != rPsAuto.blss.end(); ++iter)
+		{
+			if (!borderLineSegments[*iter].needsDeleted) break;
+		}
+		if (iter == rPsAuto.blss.end()) isDeleted = true;
+		rPsAuto.isDeleted = isDeleted;
+	}
+
+	mesh.request_face_status();
+	mesh.request_edge_status();
+	mesh.request_vertex_status();
+
+	for (unsigned int i = 0; i < regionPs.size(); ++i)
+	{
+		if (regionPs[i].isDeleted)
+		{
+			for (auto & fh : regionPs[i].faces)
+				mesh.delete_face(fh, true);
+		}
+	}
+	mesh.garbage_collection();
+}
+
+void CGLProjectInRibbonView::ContourLineBasedMethod()
+{
+	//read mesh
+	if (!OpenMesh::IO::read_mesh(mesh, "Test.obj")) cout << "Error" << endl;
+
+	OpenMesh::IO::Options opt;
+	//add property
+	//normal property
+	if (!opt.check(OpenMesh::IO::Options::FaceNormal))
+	{
+		mesh.request_face_normals();
+		mesh.update_normals();
+	}
+
+	//dihedral angle
+	OpenMesh::EPropHandleT<float> dihedralAngle;
+	mesh.add_property(dihedralAngle);
+
+	//Edge status 
+	OpenMesh::EPropHandleT<int> status;
+	mesh.add_property(status);
+
+	OpenMesh::EPropHandleT<std::set<int>> regionIDs;
+	mesh.add_property(regionIDs);
+
+	//平面表面区域边界提取及分割
+	//计算每一条边相邻面的二面角
+	DeletingEdgeArray deletingEdges;
+	UnDeterminedEdgeArray undeterminedEdges;
+
+	float fi = 0.1f;
+	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
+		e_it != mesh.edges_end(); ++e_it)
+	{
+		float f = mesh.calc_dihedral_angle_fast(*e_it);
+		float degree = glm::degrees(f);
+		mesh.property(dihedralAngle, *e_it) = degree;
+		if (std::abs(degree) < fi)
+		{
+			mesh.property(status, *e_it) = DELETING;
+			deletingEdges.push_back(std::make_pair(*e_it, true));
+		}
+		else
+		{
+			mesh.property(status, *e_it) = UNDETERMINED;
+			undeterminedEdges.push_back(std::make_pair(*e_it, true));
+		}
+	}
+
+	//生成平面区域
+	std::vector<Region> regionPs;
+	for (int i = 0; i < deletingEdges.size(); ++i)
+	{
+		std::map<MyMesh::FaceHandle, bool> mp;
+		if (mesh.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
+		{
+			mp.clear();
+			Region newRegion;
+			auto adjacentfh = mesh.face_handle(mesh.halfedge_handle(deletingEdges[i].first, 0));
+			RegionSpread(mesh, status, adjacentfh, mp);
+			for (const auto & i : mp)
+			{
+				newRegion.faces.push_back(i.first);
+			}
+			regionPs.push_back(newRegion);
+		}
+	}
+
+	int borderSum = 0;
+	for (int i = 0; i < regionPs.size(); ++i)
+	{
+		for (int j = 0; j < regionPs[i].faces.size(); ++j)
+		{
+			MyMesh::FaceEdgeIter fe_iter = mesh.fe_iter(regionPs[i].faces[j]);
+			while (fe_iter.is_valid())
+			{
+				if (mesh.property(status, *fe_iter) == UNDETERMINED)
+				{
+					mesh.property(status, *fe_iter) = BORDER;
+					mesh.property(regionIDs, *fe_iter).insert(i);
+					++borderSum;
+				}
+				else if (mesh.property(status, *fe_iter) == BORDER)
+				{
+					mesh.property(regionIDs, *fe_iter).insert(i);
+				}
+
+				++fe_iter;
+			}
+		}
+	}
+
+	std::cout << "Region Sum: " << regionPs.size() << std::endl;
+	std::cout << "Border Sum: " << borderSum << std::endl;
+
+	std::vector<BorderLineSegment> borderLineSegments;
+	for (int i = 0; i < regionPs.size(); ++i)
+	{
+		for (int j = 0; j < regionPs[i].faces.size(); ++j)
+		{
+			MyMesh::FaceEdgeIter fe_iter = mesh.fe_iter(regionPs[i].faces[j]);
+			while (fe_iter.is_valid())
+			{
+				if (mesh.property(status, *fe_iter) == BORDER)
+				{
+					MyMesh::Point pA =
+						mesh.point(mesh.from_vertex_handle(mesh.halfedge_handle(*fe_iter, 0)));
+					MyMesh::Point pB =
+						mesh.point(mesh.to_vertex_handle(mesh.halfedge_handle(*fe_iter, 0)));
+					std::cout << "From : " << pA[0] << " " << pA[1] << " " << pA[2]
+						<< " To : " << pB[0] << " " << pB[1] << " " << pB[2] << std::endl;
+
+					BorderLineSegment bls(BorderLineSegment(
+						PointNA(pA[0], pA[1], pA[2]),
+						PointNA(pB[0], pB[1], pB[2])));
+
+					for (const auto & i : mesh.property(regionIDs, *fe_iter))
+					{
+						bls.RegionIDs.insert(i);
+					}
+
+					borderLineSegments.push_back(bls);
+					mesh.property(status, *fe_iter) = BORDER_CALCED;
+				}
+
+				++fe_iter;
+			}
+		}
+	}
+
+	std::map < BorderPoint, GraphNode, BorderPoint> borderPointAdjGraph;
+	for (int i = 0; i < borderLineSegments.size(); ++i)
+	{
+		borderPointAdjGraph[borderLineSegments[i].A].toPoints.push_back({ borderLineSegments[i].B, i });
+		borderPointAdjGraph[borderLineSegments[i].B].toPoints.push_back({ borderLineSegments[i].A, i });
+
+		for (const auto & j : borderLineSegments[i].RegionIDs)
+		{
+			regionPs[j].blss.insert(i);
+		}
+	}
+
+	std::vector<ConnectRegion> connectRegions;
+	for (auto & bp : borderPointAdjGraph)
+	{
+		if (bp.second.isVisited) continue;
+		ConnectRegion newRegion;
+		BorderPoint startPoint(bp.first);
+		GraphBFS(borderPointAdjGraph, startPoint, newRegion);
+		connectRegions.push_back(newRegion);
+	}
+
+	DeletedRegionAnalysis(connectRegions, borderPointAdjGraph, borderLineSegments);
+
+	DeleteMyMesh(mesh, connectRegions, borderLineSegments, regionPs);
+
+	if (!OpenMesh::IO::write_mesh(mesh, "result.off"))
+	{
+		cout << "Error writing..." << endl;
+	}
+
+	//delete faces edges vertices
+	/*mesh.request_face_status();
+	mesh.request_edge_status();
+	mesh.request_vertex_status();
+
+	mesh.delete_face(fh, true);
+	mesh.delete_vertex(vh, true);
+	mesh.delete_edge(eh, true);
+
+	mesh.garbage_collection();*/
+
+
+
+	/*std::cout << "Before: " << std::endl;
+	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
+	e_it != mesh.edges_end(); ++e_it)
+	{
+	std::cout << "Edge #" << *e_it << " : " << mesh.property(dihedralAngle, *e_it) << std::endl;
+	}
+
+	std::cout << "After : " << std::endl;
+	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
+	e_it != mesh.edges_end(); ++e_it)
+	{
+	std::cout << "Edge #" << *e_it << " : " << mesh.property(dihedralAngle, *e_it) << std::endl;
+
+	auto fh1 = mesh.face_handle(mesh.halfedge_handle(*e_it, 0));
+	auto fh2 = mesh.opposite_face_handle(mesh.halfedge_handle(*e_it, 0));
+	}*/
+
+	std::cout << "Finished..." << std::endl;
+}
+
+void CGLProjectInRibbonView::OnStartCLBAlgorithm()
+{
+	// TODO:  在此添加命令处理程序代码
+	ContourLineBasedMethod();
 }

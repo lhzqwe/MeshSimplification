@@ -1,11 +1,6 @@
 #include "stdafx.h"
 #include "Camera.h"
 
-Camera::Camera()
-{
-}
-
-
 Camera::~Camera()
 {
 }
@@ -66,7 +61,7 @@ void Camera::ProcessMouseMovement(GLfloat xoffset, GLfloat yoffset, GLboolean co
 
 void Camera::ProcessMouseScroll(GLfloat yoffset)
 {
-	yoffset *= 0.1;
+	yoffset *= 0.1f;
 	if (this->Zoom >= 1.0f && this->Zoom <= 45.0f)
 		this->Zoom -= yoffset;
 	if (this->Zoom <= 1.0f)
@@ -90,7 +85,7 @@ void Camera::updateCameraVectors()
 
 void Camera::ProcessMouseScrollInCameraPosition(GLshort zDelta)
 {
-	GLfloat velocity = this->MovementSpeed * 0.1;
+	GLfloat velocity = this->MovementSpeed * 0.1f;
 	if (zDelta > 0)
 		this->Position += this->Front * velocity;
 	else if (zDelta < 0)
