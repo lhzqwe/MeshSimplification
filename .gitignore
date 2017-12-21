@@ -14,6 +14,7 @@
 *.aps
 *.rc
 *.user
+*.log
 GLProjectInRibbon/ipch
 GLProjectInRibbon/Release
 GLProjectInRibbon/Debug
@@ -21,3 +22,4 @@ GLProjectInRibbon/GLProjectInRibbon/Debug
 GLProjectInRibbon/GLProjectInRibbon/res
 GLProjectInRibbon/GLProjectInRibbon/Release
 GLProjectInRibbon/GLProjectInRibbon/include
+mylog*/

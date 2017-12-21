@@ -78,6 +78,12 @@ BOOL CGLProjectInRibbonApp::InitInstance()
 	InitCtrls.dwICC = ICC_WIN95_CLASSES;
 	InitCommonControlsEx(&InitCtrls);
 
+	//Init Console
+	AllocConsole();
+	SetConsoleTitle(_T("»’÷æ"));
+	freopen("CONOUT$", "w", stdout);
+	freopen("CONIN$", "r+t", stdin);
+
 	CWinAppEx::InitInstance();
 
 
@@ -157,6 +163,8 @@ int CGLProjectInRibbonApp::ExitInstance()
 {
 	//TODO: handle additional resources you may have added
 	AfxOleTerm(FALSE);
+
+	FreeConsole();
 
 	return CWinAppEx::ExitInstance();
 }

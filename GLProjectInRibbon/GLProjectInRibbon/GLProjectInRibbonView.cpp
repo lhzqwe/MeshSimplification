@@ -29,9 +29,13 @@
 #include "GL/GLU.H" // 已经包含GL.h
 #include "Resource.h"
 
-#include <map>
+#define _CRTDBG_MAP_ALLOC
 
-#include <glog/logging.h>
+#include <stdlib.h>
+#include <crtdbg.h>
+#include <windows.h>
+
+#include <map>
 
 // New codes end.
 // ////////////////////////////////////////////////////////////////
@@ -85,7 +89,6 @@ END_MESSAGE_MAP()
 CGLProjectInRibbonView::CGLProjectInRibbonView()
 {
 	// TODO: add construction code here
-
 }
 
 CGLProjectInRibbonView::~CGLProjectInRibbonView()
@@ -353,11 +356,15 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	mesh_tree_ = nullptr;
 
+	//Console
+	WCHAR szBuf[100];
+	GetConsoleTitle(szBuf, 100);
+	HWND hwnd = ::FindWindow(NULL, szBuf);
+	HMENU hmenu = ::GetSystemMenu(hwnd, FALSE);
+	::RemoveMenu(hmenu, SC_CLOSE, MF_BYCOMMAND);
+
 	// New codes end.
-	// ////////////////////////////////////////////////////////////////
-
-
-	google::InitGoogleLogging("GLProjectInRibbon");
+	// //////////////////////////////////////////////////////////////
 
 	return 0;
 }
@@ -423,8 +430,7 @@ void CGLProjectInRibbonView::OnDestroy()
 	}*/
 
 	DeleteTree();
-
-	google::ShutdownGoogleLogging();
+	//_CrtDumpMemoryLeaks();
 }
 
 
@@ -2546,27 +2552,35 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 void CGLProjectInRibbonView::ContourLineBasedMethod()
 {
 	//read mesh
-	if (!OpenMesh::IO::read_mesh(mesh, "Test.obj")) cout << "Error" << endl;
+	cout << "Reading mesh file..." << endl;
+	if (!OpenMesh::IO::read_mesh(mesh_, "Test.obj"))
+	{
+		cout << "Read mesh file failed..." << endl;
+		return;
+	}
+	cout << "Read mesh file completed..." << endl;
+	cout << "Mesh vertices: " << mesh_.n_vertices() << " "
+	<< "faces: " << mesh_.n_faces() << endl;
 
 	OpenMesh::IO::Options opt;
 	//add property
 	//normal property
 	if (!opt.check(OpenMesh::IO::Options::FaceNormal))
 	{
-		mesh.request_face_normals();
-		mesh.update_normals();
+		mesh_.request_face_normals();
+		mesh_.update_normals();
 	}
 
 	//dihedral angle
 	OpenMesh::EPropHandleT<float> dihedralAngle;
-	mesh.add_property(dihedralAngle);
+	mesh_.add_property(dihedralAngle);
 
 	//Edge status 
 	OpenMesh::EPropHandleT<int> status;
-	mesh.add_property(status);
+	mesh_.add_property(status);
 
 	OpenMesh::EPropHandleT<std::set<int>> regionIDs;
-	mesh.add_property(regionIDs);
+	mesh_.add_property(regionIDs);
 
 	//平面表面区域边界提取及分割
 	//计算每一条边相邻面的二面角
@@ -2574,20 +2588,20 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	UnDeterminedEdgeArray undeterminedEdges;
 
 	float fi = 0.1f;
-	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
-		e_it != mesh.edges_end(); ++e_it)
+	for (MyMesh::EdgeIter e_it = mesh_.edges_begin();
+		e_it != mesh_.edges_end(); ++e_it)
 	{
-		float f = mesh.calc_dihedral_angle_fast(*e_it);
+		float f = mesh_.calc_dihedral_angle_fast(*e_it);
 		float degree = glm::degrees(f);
-		mesh.property(dihedralAngle, *e_it) = degree;
+		mesh_.property(dihedralAngle, *e_it) = degree;
 		if (std::abs(degree) < fi)
 		{
-			mesh.property(status, *e_it) = DELETING;
+			mesh_.property(status, *e_it) = DELETING;
 			deletingEdges.push_back(std::make_pair(*e_it, true));
 		}
 		else
 		{
-			mesh.property(status, *e_it) = UNDETERMINED;
+			mesh_.property(status, *e_it) = UNDETERMINED;
 			undeterminedEdges.push_back(std::make_pair(*e_it, true));
 		}
 	}
@@ -2597,12 +2611,12 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	for (unsigned int i = 0; i < deletingEdges.size(); ++i)
 	{
 		std::map<MyMesh::FaceHandle, bool> mp;
-		if (mesh.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
+		if (mesh_.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
 		{
 			mp.clear();
 			Region newRegion;
-			auto adjacentfh = mesh.face_handle(mesh.halfedge_handle(deletingEdges[i].first, 0));
-			RegionSpread(mesh, status, adjacentfh, mp);
+			auto adjacentfh = mesh_.face_handle(mesh_.halfedge_handle(deletingEdges[i].first, 0));
+			RegionSpread(mesh_, status, adjacentfh, mp);
 			for (const auto & i : mp)
 			{
 				newRegion.faces.push_back(i.first);
@@ -2616,18 +2630,18 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	{
 		for (unsigned int j = 0; j < regionPs[i].faces.size(); ++j)
 		{
-			MyMesh::FaceEdgeIter fe_iter = mesh.fe_iter(regionPs[i].faces[j]);
+			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs[i].faces[j]);
 			while (fe_iter.is_valid())
 			{
-				if (mesh.property(status, *fe_iter) == UNDETERMINED)
+				if (mesh_.property(status, *fe_iter) == UNDETERMINED)
 				{
-					mesh.property(status, *fe_iter) = BORDER;
-					mesh.property(regionIDs, *fe_iter).insert(i);
+					mesh_.property(status, *fe_iter) = BORDER;
+					mesh_.property(regionIDs, *fe_iter).insert(i);
 					++borderSum;
 				}
-				else if (mesh.property(status, *fe_iter) == BORDER)
+				else if (mesh_.property(status, *fe_iter) == BORDER)
 				{
-					mesh.property(regionIDs, *fe_iter).insert(i);
+					mesh_.property(regionIDs, *fe_iter).insert(i);
 				}
 
 				++fe_iter;
@@ -2635,43 +2649,52 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		}
 	}
 
-	std::cout << "Region Sum: " << regionPs.size() << std::endl;
-	std::cout << "Border Sum: " << borderSum << std::endl;
+	cout << "Generated " << regionPs.size() << " " << "regions..." << endl;
+	cout << "Generated " << borderSum << " " << "borders..." << endl;
 
 	std::vector<BorderLineSegment> borderLineSegments;
 	for (unsigned int i = 0; i < regionPs.size(); ++i)
 	{
 		for (unsigned int j = 0; j < regionPs[i].faces.size(); ++j)
 		{
-			MyMesh::FaceEdgeIter fe_iter = mesh.fe_iter(regionPs[i].faces[j]);
+			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs[i].faces[j]);
 			while (fe_iter.is_valid())
 			{
-				if (mesh.property(status, *fe_iter) == BORDER)
+				if (mesh_.property(status, *fe_iter) == BORDER)
 				{
 					MyMesh::Point pA =
-						mesh.point(mesh.from_vertex_handle(mesh.halfedge_handle(*fe_iter, 0)));
+						mesh_.point(mesh_.from_vertex_handle(mesh_.halfedge_handle(*fe_iter, 0)));
 					MyMesh::Point pB =
-						mesh.point(mesh.to_vertex_handle(mesh.halfedge_handle(*fe_iter, 0)));
-					std::cout << "From : " << pA[0] << " " << pA[1] << " " << pA[2]
-						<< " To : " << pB[0] << " " << pB[1] << " " << pB[2] << std::endl;
+						mesh_.point(mesh_.to_vertex_handle(mesh_.halfedge_handle(*fe_iter, 0)));
 
 					BorderLineSegment bls(BorderLineSegment(
 						PointNA(pA[0], pA[1], pA[2]),
 						PointNA(pB[0], pB[1], pB[2])));
 
-					for (const auto & i : mesh.property(regionIDs, *fe_iter))
+					for (const auto & i : mesh_.property(regionIDs, *fe_iter))
 					{
 						bls.RegionIDs.insert(i);
 					}
 
 					borderLineSegments.push_back(bls);
-					mesh.property(status, *fe_iter) = BORDER_CALCED;
+					mesh_.property(status, *fe_iter) = BORDER_CALCED;
 				}
 
 				++fe_iter;
 			}
 		}
 	}
+
+	cout << "Border line segments : " << endl;
+	for (int i = 0; i < borderLineSegments.size(); ++i)
+	{
+		const auto & bls = borderLineSegments[i];
+		cout << "(" << bls.A.x << ", " << bls.A.y << ", " << bls.A.z << ")"
+			<< " --> "
+			<< "(" << bls.B.x << ", " << bls.B.y << ", " << bls.B.z << ")" << endl;
+	}
+
+	cout << "Extracting " << borderLineSegments.size() << " border line segments..." << endl;
 
 	std::map < BorderPoint, GraphNode, BorderPoint> borderPointAdjGraph;
 	for (unsigned int i = 0; i < borderLineSegments.size(); ++i)
@@ -2695,14 +2718,24 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		connectRegions.push_back(newRegion);
 	}
 
+	cout << "Generated " << connectRegions.size() << " maximum connected regions..." << endl;
+
 	DeletedRegionAnalysis(connectRegions, borderPointAdjGraph, borderLineSegments);
 
-	DeleteMyMesh(mesh, connectRegions, borderLineSegments, regionPs);
+	cout << "Deleted 2 connect regions..." << endl;
 
-	if (!OpenMesh::IO::write_mesh(mesh, "result.off"))
+	DeleteMyMesh(mesh_, connectRegions, borderLineSegments, regionPs);
+
+	cout << "Mesh information after simplified : " 
+	<< "vertices : " << mesh_.n_vertices() << " "
+	<< "faces : " << mesh_.n_faces() << endl;
+
+	if (!OpenMesh::IO::write_mesh(mesh_, "result.off"))
 	{
-		cout << "Error writing..." << endl;
+		cout << "Writing to result.off failed..." << endl;
 	}
+
+	cout << "Writing to result.off completed..." << endl;
 
 	//delete faces edges vertices
 	/*mesh.request_face_status();
@@ -2733,9 +2766,6 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	auto fh1 = mesh.face_handle(mesh.halfedge_handle(*e_it, 0));
 	auto fh2 = mesh.opposite_face_handle(mesh.halfedge_handle(*e_it, 0));
 	}*/
-	FLAGS_stderrthreshold = google::GLOG_INFO;
-	google::SetLogDestination(google::GLOG_INFO, "./mylog/mylog.txt");
-	LOG(INFO) << "Hello World" << endl;
 }
 
 void CGLProjectInRibbonView::OnStartCLBAlgorithm()

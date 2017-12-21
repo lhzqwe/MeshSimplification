@@ -299,7 +299,6 @@ public:
 
 	//New Algorithm
 public:
-	MyMesh mesh;
 	void RegionSpread(MyMesh & mesh,
 		OpenMesh::EPropHandleT<int>& edgeStatus,
 		MyMesh::FaceHandle &fh,
@@ -478,6 +477,8 @@ private:
 	Mesh normal_mesh_;
 	vector<Mesh> mesh_list_; //For Segmentation
 	Mesh simplified_mesh_;
+
+	MyMesh mesh_;
 
 	////Log System
 	//Log m_Log;
