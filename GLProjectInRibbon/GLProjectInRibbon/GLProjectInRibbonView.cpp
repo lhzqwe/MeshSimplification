@@ -58,7 +58,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_FILE_PRINT_PREVIEW, &CGLProjectInRibbonView::OnFilePrintPreview)
 	ON_WM_CONTEXTMENU()
 	ON_WM_RBUTTONUP()
-	ON_COMMAND(ID_OPENBUTTON, &CGLProjectInRibbonView::OnOpenbutton)
+	ON_COMMAND(ID_OPENBUTTON, &CGLProjectInRibbonView::OnOpenButton)
 	ON_COMMAND(ID_SAVEBUTTON, &CGLProjectInRibbonView::OnSavebutton)
 	ON_WM_CREATE()
 	ON_WM_DESTROY()
@@ -82,6 +82,9 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_QUADRICSIMP, &CGLProjectInRibbonView::OnQuadricSimp)
 	ON_COMMAND(ID_FINALMETHOD, &CGLProjectInRibbonView::OnFinalmethod)
 	ON_COMMAND(ID_START, &CGLProjectInRibbonView::OnStartCLBAlgorithm)
+	ON_COMMAND(ID_GENERATE_BORDR_LINE, &CGLProjectInRibbonView::OnGenerateBorderLine)
+	ON_COMMAND(ID_GENERATE_CONNECT_FACES, &CGLProjectInRibbonView::OnGenerateConnectFaces)
+	ON_COMMAND(ID_GENERATE_MAXIMUM_CONNECT_REGIONS, &CGLProjectInRibbonView::OnGenerateMaximumConnectRegions)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -120,7 +123,10 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 
 	InitDirectionlLighting();
 
-	DrawModel();
+	//DrawModel();
+
+	if (ifDrawBorderLine) DrawLine(5.0f, 1.0f, 0.0, 0.0f);
+
 	//DrawModelInNormalMode();
 
 	TimeEnd();
@@ -195,7 +201,7 @@ CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const // non-debug 
 // CGLProjectInRibbonView message handlers
 
 
-void CGLProjectInRibbonView::OnOpenbutton()
+void CGLProjectInRibbonView::OnOpenButton()
 {
 	// TODO:  在此添加控件通知处理程序代码
 	BOOL isOpen = TRUE;
@@ -231,10 +237,32 @@ void CGLProjectInRibbonView::OnOpenbutton()
 		normal_mesh_.RefreshGpuData();
 	}
 	
+	//OpenMesh read mesh ...
+	//read mesh
 	CT2CA pszConvertedAnsiString(file_path_);
+	string file_path_tmp(pszConvertedAnsiString);
+	cout << "File path : " << file_path_tmp << endl;
+	cout << "Reading mesh file..." << endl;
+	if (!OpenMesh::IO::read_mesh(mesh_, file_path_tmp.c_str()))
+	{
+		cout << "Read mesh file failed..." << endl;
+		return;
+	}
+	cout << "Read mesh file completed..." << endl;
+	cout << "Mesh vertices: " << mesh_.n_vertices() << " "
+		<< "faces: " << mesh_.n_faces() << endl;
+
+	normal_mesh_ = GenerateFlatMesh(mesh_);
+
+	OnNormalDisplay();
+
+	//CGAL
+	/*CT2CA pszConvertedAnsiString(file_path_);
 	string tmp(pszConvertedAnsiString);
 	SMeshLib::IO::importOBJ(tmp, &polyhedron_);
-	assert(!polyhedron_.empty());
+	assert(!polyhedron_.empty());*/
+
+
 	//m_Model = new Model((GLchar *)tmp.c_str());
 	
 	//AdjustCameraView(m_Model);
@@ -324,11 +352,38 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 		AfxMessageBox(CString(glewGetErrorString(err)));
 	}
 
-	//Init Shader
+	//Init Console
+	WCHAR szBuf[100];
+	GetConsoleTitle(szBuf, 100);
+	HWND hwnd = ::FindWindow(NULL, szBuf);
+	HMENU hmenu = ::GetSystemMenu(hwnd, FALSE);
+	::RemoveMenu(hmenu, SC_CLOSE, MF_BYCOMMAND);
+
+	//Init Shader ...
+	shader_ = nullptr;
+	line_shader_ = nullptr;
+	text_shader_ = nullptr;
+	camera_ = nullptr;
+
+	cout << "Init shader ..." << endl;
 	shader_ = new Shader("Shader/normal.vert", "Shader/normal.frag");
+	if (shader_ == nullptr) cout << "shader_ " << "init failed..." << endl;
+	else cout << "shader_ " << "init success ..." << endl;
+
 	//m_Shader = new Shader("Shader/normal_vShading.vert", "Shader/normal_vShading.frag");
 	text_shader_ = new Shader("text.vs", "text.frag");
+	if (text_shader_ == nullptr) cout << "text_shader_ " << "init failed..." << endl;
+	else cout << "text_shader_ " << "init success ..." << endl;
+
+	line_shader_ = new Shader("Shader/line.vert", "Shader/line.frag");
+	if (line_shader_ == nullptr) cout << "line_shader_ " << "init failed..." << endl;
+	else cout << "line_shader_ " << "init success ..." << endl;
+
 	camera_ = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+	if (camera_ == nullptr) cout << "Camera " << "init failed..." << endl;
+	else cout << "Camera " << "init success with position : " << "(" 
+		<< camera_->Position.x << ", " << camera_->Position.y << ", " << camera_->Position.z
+		<< ")";
 	model_ = nullptr;
 	//m_Model_LOD = nullptr;
 	text_.InitFreeType();
@@ -356,13 +411,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	mesh_tree_ = nullptr;
 
-	//Console
-	WCHAR szBuf[100];
-	GetConsoleTitle(szBuf, 100);
-	HWND hwnd = ::FindWindow(NULL, szBuf);
-	HMENU hmenu = ::GetSystemMenu(hwnd, FALSE);
-	::RemoveMenu(hmenu, SC_CLOSE, MF_BYCOMMAND);
-
+	ifDrawBorderLine = false;
 	// New codes end.
 	// //////////////////////////////////////////////////////////////
 
@@ -390,6 +439,12 @@ void CGLProjectInRibbonView::OnDestroy()
 	{
 		delete shader_;
 		shader_ = nullptr;
+	}
+
+	if (line_shader_ != nullptr)
+	{
+		delete line_shader_;
+		line_shader_ = nullptr;
 	}
 	
 	if (text_shader_ != nullptr)
@@ -942,7 +997,7 @@ void CGLProjectInRibbonView::SetupSimplifiedMesh()
 void CGLProjectInRibbonView::AdjustCameraView(const Mesh& pMesh)
 {
 	CalculateFocusPoint(pMesh);
-	float bodyDiagonal = static_cast<float>((pow(num_xMax_ - num_xMin_, 2) + pow(num_yMax_ - num_yMin_, 2) + pow(num_zMax_ - num_zMin_, 2)));
+	float bodyDiagonal = static_cast<float>(sqrt(pow(num_xMax_ - num_xMin_, 2) + pow(num_yMax_ - num_yMin_, 2) + pow(num_zMax_ - num_zMin_, 2)));
 	this->num_bodyDiagnalLength_ = bodyDiagonal;
 	camera_->SetPosition(0.0f, 0.0f, 2.0f * bodyDiagonal);
 	camera_->SetFront(0.0f, 0.0f, -bodyDiagonal * 0.2f);
@@ -1005,6 +1060,50 @@ Mesh CGLProjectInRibbonView::GenerateFlatMesh(Mesh & pMesh)
 		result.vertices[indice + 2].Normal = n;
 	}
 
+	return result;
+}
+
+Mesh CGLProjectInRibbonView::GenerateFlatMesh(MyMesh & mesh)
+{
+	assert(mesh.n_vertices() != 0);
+
+	Mesh result;
+
+	MyMesh::FaceIter f_it, f_end(mesh.faces_end());
+	MyMesh::FaceVertexIter fv_it;
+
+	glm::vec3 n;
+	for (f_it = mesh.faces_begin(); f_it != f_end; ++f_it)
+	{
+		fv_it = mesh.fv_iter(*f_it);
+		if (fv_it.is_valid())
+		{
+			auto &point1 = mesh.point(*fv_it);
+			++fv_it;
+			auto &point2 = mesh.point(*fv_it);
+			++fv_it;
+			auto &point3 = mesh.point(*fv_it);
+
+			Vertex v1(glm::vec3(point1[0], point1[1], point1[2]));
+			Vertex v2(glm::vec3(point2[0], point2[1], point2[2]));
+			Vertex v3(glm::vec3(point3[0], point3[1], point3[2]));
+
+			n = glm::cross(v2.Position - v1.Position, v3.Position - v2.Position);
+
+			v1.Normal = n;
+			v2.Normal = n;
+			v3.Normal = n;
+
+			result.vertices.push_back(v1);
+			result.vertices.push_back(v2);
+			result.vertices.push_back(v3);
+
+			for (int i = 0; i < 3; ++i)
+			{
+				result.indices.push_back(result.indices.size());
+			}			
+		}
+	}
 	return result;
 }
 
@@ -2551,17 +2650,6 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 
 void CGLProjectInRibbonView::ContourLineBasedMethod()
 {
-	//read mesh
-	cout << "Reading mesh file..." << endl;
-	if (!OpenMesh::IO::read_mesh(mesh_, "Test.obj"))
-	{
-		cout << "Read mesh file failed..." << endl;
-		return;
-	}
-	cout << "Read mesh file completed..." << endl;
-	cout << "Mesh vertices: " << mesh_.n_vertices() << " "
-	<< "faces: " << mesh_.n_faces() << endl;
-
 	OpenMesh::IO::Options opt;
 	//add property
 	//normal property
@@ -2652,7 +2740,6 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	cout << "Generated " << regionPs.size() << " " << "regions..." << endl;
 	cout << "Generated " << borderSum << " " << "borders..." << endl;
 
-	std::vector<BorderLineSegment> borderLineSegments;
 	for (unsigned int i = 0; i < regionPs.size(); ++i)
 	{
 		for (unsigned int j = 0; j < regionPs[i].faces.size(); ++j)
@@ -2676,7 +2763,7 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 						bls.RegionIDs.insert(i);
 					}
 
-					borderLineSegments.push_back(bls);
+					border_line_segments_.push_back(bls);
 					mesh_.property(status, *fe_iter) = BORDER_CALCED;
 				}
 
@@ -2686,23 +2773,23 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	}
 
 	cout << "Border line segments : " << endl;
-	for (int i = 0; i < borderLineSegments.size(); ++i)
+	for (int i = 0; i < border_line_segments_.size(); ++i)
 	{
-		const auto & bls = borderLineSegments[i];
+		const auto & bls = border_line_segments_[i];
 		cout << "(" << bls.A.x << ", " << bls.A.y << ", " << bls.A.z << ")"
 			<< " --> "
 			<< "(" << bls.B.x << ", " << bls.B.y << ", " << bls.B.z << ")" << endl;
 	}
 
-	cout << "Extracting " << borderLineSegments.size() << " border line segments..." << endl;
+	cout << "Extracting " << border_line_segments_.size() << " border line segments..." << endl;
 
 	std::map < BorderPoint, GraphNode, BorderPoint> borderPointAdjGraph;
-	for (unsigned int i = 0; i < borderLineSegments.size(); ++i)
+	for (unsigned int i = 0; i < border_line_segments_.size(); ++i)
 	{
-		borderPointAdjGraph[borderLineSegments[i].A].toPoints.push_back({ borderLineSegments[i].B, i });
-		borderPointAdjGraph[borderLineSegments[i].B].toPoints.push_back({ borderLineSegments[i].A, i });
+		borderPointAdjGraph[border_line_segments_[i].A].toPoints.push_back({ border_line_segments_[i].B, i });
+		borderPointAdjGraph[border_line_segments_[i].B].toPoints.push_back({ border_line_segments_[i].A, i });
 
-		for (const auto & j : borderLineSegments[i].RegionIDs)
+		for (const auto & j : border_line_segments_[i].RegionIDs)
 		{
 			regionPs[j].blss.insert(i);
 		}
@@ -2720,11 +2807,11 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 
 	cout << "Generated " << connectRegions.size() << " maximum connected regions..." << endl;
 
-	DeletedRegionAnalysis(connectRegions, borderPointAdjGraph, borderLineSegments);
+	DeletedRegionAnalysis(connectRegions, borderPointAdjGraph, border_line_segments_);
 
 	cout << "Deleted 2 connect regions..." << endl;
 
-	DeleteMyMesh(mesh_, connectRegions, borderLineSegments, regionPs);
+	DeleteMyMesh(mesh_, connectRegions, border_line_segments_, regionPs);
 
 	cout << "Mesh information after simplified : " 
 	<< "vertices : " << mesh_.n_vertices() << " "
@@ -2772,4 +2859,106 @@ void CGLProjectInRibbonView::OnStartCLBAlgorithm()
 {
 	// TODO:  在此添加命令处理程序代码
 	ContourLineBasedMethod();
+}
+
+
+void CGLProjectInRibbonView::OnGenerateBorderLine()
+{
+	// TODO:  在此添加命令处理程序代码
+	if (border_line_segments_.empty())
+	{
+		MessageBox(_T("请先执行算法，产生边界边！"));
+		return;
+	}
+	cout << "Generate border line ..." << endl;
+	ifDrawBorderLine = true;
+
+	for (int i = 0; i < border_line_segments_.size(); ++i)
+	{
+		auto & bls = border_line_segments_[i];
+		border_line_segments_gpu.push_back(gpu::Edge(
+			gpu::Point(bls.A.x, bls.A.y, bls.A.z),
+			gpu::Point(bls.B.x, bls.B.y, bls.B.z)));
+	}
+
+	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnGenerateConnectFaces()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Generating connect faces ..." << endl;
+}
+
+
+void CGLProjectInRibbonView::OnGenerateMaximumConnectRegions()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Generating connnect regions ..." << endl;
+}
+
+void CGLProjectInRibbonView::DrawLine(float line_width, float r, float g, float b)
+{
+	InitLineData();
+
+	line_shader_->Use();
+
+	glLineWidth(line_width);
+	//Setting Color
+	glUniform3f(glGetUniformLocation(line_shader_->Program, "a2f_color"), r, g, b);
+
+	matrix_view_ = camera_->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(matrix_view_));
+
+	matrix_model_ = glm::mat4(1.0);
+	matrix_model_ = matrix_rotation_;
+	matrix_model_ = glm::scale(matrix_model_, glm::vec3(num_model_scale_));
+	matrix_model_ = glm::translate(matrix_model_, glm::vec3(-focus_point_.x, -focus_point_.y, -focus_point_.z));
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
+
+	glBindVertexArray(border_line_gm_.VAO);
+	glDrawElements(GL_LINES, border_line_segments_gpu.size() * 2, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
+
+}
+
+void CGLProjectInRibbonView::InitLineData()
+{
+	if (!border_line_gm_.isMeshTransportedToGPU)
+	{
+		auto &vao = border_line_gm_.VAO;
+		auto &vbo = border_line_gm_.VBO;
+		auto &ebo = border_line_gm_.EBO;
+
+		if (!indices_.empty())
+		{
+			indices_.clear();
+		}
+
+		for (unsigned int i = 0; i < border_line_segments_gpu.size(); ++i)
+		{
+			indices_.push_back(2 * i);
+			indices_.push_back(2 * i + 1);
+		}
+
+		glGenVertexArrays(1, &vao);
+		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+
+		glBindVertexArray(vao);
+		assert(!border_line_segments_gpu.empty());
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, border_line_segments_gpu.size() * sizeof(gpu::Edge), &border_line_segments_gpu[0], GL_STATIC_DRAW);
+		assert(!indices_.empty());
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(GLuint), &indices_[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)0);
+		glBindVertexArray(0);
+
+		border_line_gm_.isMeshTransportedToGPU = true;
+	}
+
 }

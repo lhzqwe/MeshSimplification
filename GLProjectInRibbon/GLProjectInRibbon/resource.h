@@ -42,6 +42,7 @@
 #define ID_QEMOPERATION                 32774
 #define ID_LODDISPLAY                   32775
 #define ID_BUTTON2                      32776
+#define ID_GENERATE_                    32776
 #define ID_BUTTON3                      32777
 #define ID_BUTTON4                      32778
 #define ID_BUTTON5                      32779
@@ -52,13 +53,16 @@
 #define ID_QUADRICSIMP                  32784
 #define ID_FINALMETHOD                  32785
 #define ID_START                        32786
+#define ID_GENERATE_BORDR_LINE          32787
+#define ID_GENERATE_CONNECT_FACES       32788
+#define ID_GENERATE_MAXIMUM_CONNECT_REGIONS 32789
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        310
-#define _APS_NEXT_COMMAND_VALUE         32787
+#define _APS_NEXT_COMMAND_VALUE         32788
 #define _APS_NEXT_CONTROL_VALUE         1000
 #define _APS_NEXT_SYMED_VALUE           310
 #endif

@@ -73,6 +73,62 @@
 
 #pragma endregion define
 
+namespace gpu{
+	struct Point {
+		Point(float x = 0.0f, float y = 0.0f, float z = 0.0f) {
+			position.x = x;
+			position.y = y;
+			position.z = z;
+			normal.x = 0.0f;
+			normal.y = 0.0f;
+			normal.z = 0.0f;
+			color.x = 0.0f;
+			color.y = 0.0f;
+			color.z = 0.0f;
+		}
+
+		Point(const Point & p) {
+			position = p.position;
+			normal = p.normal;
+			color = p.color;
+		}
+
+		Point& operator=(const Point & p)
+		{
+			if (this == &p) return *this;
+			position = p.position;
+			normal = p.normal;
+			color = p.color;
+		}
+
+		void set_normal(float x, float y, float z) {
+			normal.x = x;
+			normal.y = y;
+			normal.z = z;
+		}
+
+		void set_color(float r, float g, float b) {
+			color.r = r;
+			color.g = g;
+			color.b = b;
+		}
+
+		glm::vec3 position;
+		glm::vec3 normal;
+		glm::vec3 color;
+	};
+	
+	struct Edge {
+		Edge(Point _A, Point _B) :
+			A(_A),
+			B(_B)
+		{};
+
+		Point A;
+		Point B;
+	};
+};
+
 namespace sms = CGAL::Surface_mesh_simplification;
 
 class CGLProjectInRibbonView : public CView
@@ -261,6 +317,7 @@ class CGLProjectInRibbonView : public CView
 #pragma region algorithm_method
 public:
 	Mesh GenerateFlatMesh(Mesh & pMesh);
+	Mesh GenerateFlatMesh(MyMesh & mesh);
 	void GenerateColorList(vector<Color>& pColorList);
 	int  GenerateUniqueColorList(int count, vector<Color>& pColorList, vector<Color>& pExcludedColor);
 	void SetupMeshList();
@@ -350,6 +407,7 @@ public:
 	void TimeStart();
 	void InitMaterial(Color& pColor);
 	void InitDirectionlLighting();
+
 #pragma endregion rendering_method
 #pragma region event_handler
 protected:
@@ -374,7 +432,7 @@ protected:
 	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 	DECLARE_MESSAGE_MAP()
 public:
-	afx_msg void OnOpenbutton();
+	afx_msg void OnOpenButton();
 	afx_msg void OnSavebutton();
 protected:
 	// a handle to an OpenGL rendering context
@@ -408,6 +466,7 @@ private:
 	//Data Structure
 	CString file_path_;
 	Shader* shader_;
+	Shader* line_shader_;
 	Shader* text_shader_;
 	Model* model_;
 	string model_name_;
@@ -478,7 +537,39 @@ private:
 	vector<Mesh> mesh_list_; //For Segmentation
 	Mesh simplified_mesh_;
 
+	//Data for contour line based method
 	MyMesh mesh_;
+	std::vector<BorderLineSegment> border_line_segments_;
+	//Data for contour line based rendering
+	struct MeshGpuManager
+	{
+		MeshGpuManager() : isMeshTransportedToGPU(false), indiceSize(0) {};
+		~MeshGpuManager(){};
+
+		GLuint VAO, VBO, EBO;
+		bool isMeshTransportedToGPU;
+		GLsizei indiceSize;
+
+		void reset()
+		{
+			glDeleteVertexArrays(1, &VAO);
+			glDeleteBuffers(1, &VBO);
+			glDeleteBuffers(1, &EBO);
+		}
+	};
+
+	vector<gpu::Edge> border_line_segments_gpu;
+	MeshGpuManager border_line_gm_;
+	vector<GLuint> indices_;
+	bool ifDrawBorderLine;
+
+public :
+	
+	void DrawLine(float line_width, float r, float g, float b);
+	void InitLineData();
+	
+
+
 
 	////Log System
 	//Log m_Log;
@@ -490,6 +581,9 @@ protected:
 		DECLARE_DYNCREATE(CGLProjectInRibbonView)
 public:
 	CGLProjectInRibbonDoc* GetDocument() const;
+	afx_msg void OnGenerateBorderLine();
+	afx_msg void OnGenerateConnectFaces();
+	afx_msg void OnGenerateMaximumConnectRegions();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const
