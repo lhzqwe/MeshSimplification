@@ -121,11 +121,12 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 
 	TimeStart();
 
-	InitDirectionlLighting();
+	InitDirectionLighting();
 
 	//DrawModel();
 
 	if (ifDrawBorderLine) DrawLine(5.0f, 1.0f, 0.0, 0.0f);
+	if (ifDrawRegions) DrawRegions(regionPs_gm_);
 
 	//DrawModelInNormalMode();
 
@@ -379,6 +380,10 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (line_shader_ == nullptr) cout << "line_shader_ " << "init failed..." << endl;
 	else cout << "line_shader_ " << "init success ..." << endl;
 
+	region_shader_ = new Shader("Shader/region.vert", "Shader/region.frag");
+	if (region_shader_ == nullptr) cout << "region_shader_ " << "init failed..." << endl;
+	else cout << "region_shader_ " << "init success..." << endl;
+
 	camera_ = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 	if (camera_ == nullptr) cout << "Camera " << "init failed..." << endl;
 	else cout << "Camera " << "init success with position : " << "(" 
@@ -412,6 +417,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	mesh_tree_ = nullptr;
 
 	ifDrawBorderLine = false;
+	ifDrawRegions = false;
 	// New codes end.
 	// //////////////////////////////////////////////////////////////
 
@@ -445,6 +451,12 @@ void CGLProjectInRibbonView::OnDestroy()
 	{
 		delete line_shader_;
 		line_shader_ = nullptr;
+	}
+
+	if (region_shader_ != nullptr)
+	{
+		delete region_shader_;
+		region_shader_ = nullptr;
 	}
 	
 	if (text_shader_ != nullptr)
@@ -1301,7 +1313,7 @@ void CGLProjectInRibbonView::DrawMesh(Mesh& pMesh)
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	Color normalColor(1.0f, 1.0f, 1.0f);
-	InitMaterial(normalColor);
+	InitMaterial(normalColor, *shader_);
 	pMesh.Draw(*shader_);
 }
 
@@ -1326,7 +1338,7 @@ void CGLProjectInRibbonView::DrawSimplifiedModel()
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	Color normalColor(1.0f, 1.0f, 1.0f);
-	InitMaterial(normalColor); 
+	InitMaterial(normalColor, *shader_); 
 	simplified_mesh_.Draw(*shader_);
 }
 
@@ -1346,7 +1358,7 @@ void CGLProjectInRibbonView::DrawModelInNormalMode()
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	Color normalColor(1.0f, 1.0f, 1.0f);
-	InitMaterial(normalColor);
+	InitMaterial(normalColor, *shader_);
 	model_->Draw(*shader_);
 }
 
@@ -1369,7 +1381,7 @@ void CGLProjectInRibbonView::DrawModelSegmentation()
 	for (unsigned int i = 0; i < mesh_list_.size(); ++i)
 	{
 		if (mesh_list_[i].isDeleted()) continue;
-		InitMaterial(mesh_list_[i].color);
+		InitMaterial(mesh_list_[i].color, *shader_);
 		mesh_list_[i].Draw(*shader_);
 	}
 }
@@ -1392,7 +1404,7 @@ void CGLProjectInRibbonView::DrawFlatMesh()
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	Color normalColor(1.0f, 1.0f, 1.0f);
-	InitMaterial(normalColor);
+	InitMaterial(normalColor, *shader_);
 	pFlatMesh_->Draw(*shader_);
 }
 
@@ -1414,7 +1426,7 @@ void CGLProjectInRibbonView::DrawSmoothMesh()
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	Color normalColor(1.0f, 1.0f, 1.0f);
-	InitMaterial(normalColor);
+	InitMaterial(normalColor, *shader_);
 	pSmoothMesh_->Draw(*shader_);
 }
 
@@ -1435,16 +1447,25 @@ void CGLProjectInRibbonView::DrawTextInfo()
 	text_.RenderText(*text_shader_, fps_msg, 25.0f, 105.0f, 0.5f, glm::vec3(0.5f, 0.5f, 0.5f));
 }
 
-void CGLProjectInRibbonView::InitMaterial(Color& pColor)
+void CGLProjectInRibbonView::InitMaterial(Color& pColor, Shader & shader)
 {
-	shader_->Use();
-	glUniform3f(glGetUniformLocation(shader_->Program, "material.ambient"), 0.2f * pColor.R, 0.2f * pColor.G, 0.2f * pColor.B);
-	glUniform3f(glGetUniformLocation(shader_->Program, "material.diffuse"), pColor.R, pColor.G, pColor.B);
-	glUniform3f(glGetUniformLocation(shader_->Program, "material.specular"), 0.508273f, 0.508273f, 0.508273f);
-	glUniform1f(glGetUniformLocation(shader_->Program, "material.shininess"), 32.0f);
+	shader.Use();
+	glUniform3f(glGetUniformLocation(shader.Program, "material.ambient"), 0.2f * pColor.R, 0.2f * pColor.G, 0.2f * pColor.B);
+	glUniform3f(glGetUniformLocation(shader.Program, "material.diffuse"), pColor.R, pColor.G, pColor.B);
+	glUniform3f(glGetUniformLocation(shader.Program, "material.specular"), 0.508273f, 0.508273f, 0.508273f);
+	glUniform1f(glGetUniformLocation(shader.Program, "material.shininess"), 32.0f);
 }
 
-void CGLProjectInRibbonView::InitDirectionlLighting()
+void CGLProjectInRibbonView::InitMaterial(Shader & shader)
+{
+	shader.Use();
+	glUniform3f(glGetUniformLocation(shader.Program, "material.ambient"), 0.2f , 0.2f, 0.2f);
+	glUniform3f(glGetUniformLocation(shader.Program, "material.diffuse"), 1.0f, 1.0f, 1.0f);
+	glUniform3f(glGetUniformLocation(shader.Program, "material.specular"), 0.508273f, 0.508273f, 0.508273f);
+	glUniform1f(glGetUniformLocation(shader.Program, "material.shininess"), 32.0f);
+}
+
+void CGLProjectInRibbonView::InitDirectionLighting()
 {
 	shader_->Use();
 	glUniform3fv(glGetUniformLocation(shader_->Program, "viewPos"), 1, glm::value_ptr(camera_->Position));
@@ -1452,6 +1473,16 @@ void CGLProjectInRibbonView::InitDirectionlLighting()
 	glUniform3f(glGetUniformLocation(shader_->Program, "dirLight.ambient"), 1.0f, 1.0f, 1.0f);
 	glUniform3f(glGetUniformLocation(shader_->Program, "dirLight.diffuse"), 0.5f, 0.5f, 0.5f);
 	glUniform3f(glGetUniformLocation(shader_->Program, "dirLight.specular"), 0.2f, 0.2f, 0.2f);
+}
+
+void CGLProjectInRibbonView::InitDirectionLighting(Shader& shader)
+{
+	shader.Use();
+	glUniform3fv(glGetUniformLocation(shader.Program, "viewPos"), 1, glm::value_ptr(camera_->Position));
+	glUniform3f(glGetUniformLocation(shader.Program, "dirLight.direction"), 0.0f, 0.0f, -1.0f);
+	glUniform3f(glGetUniformLocation(shader.Program, "dirLight.ambient"), 1.0f, 1.0f, 1.0f);
+	glUniform3f(glGetUniformLocation(shader.Program, "dirLight.diffuse"), 0.5f, 0.5f, 0.5f);
+	glUniform3f(glGetUniformLocation(shader.Program, "dirLight.specular"), 0.2f, 0.2f, 0.2f);
 }
 
 void CGLProjectInRibbonView::SetDrawingMode(int drawingMode)
@@ -2610,6 +2641,8 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 								      std::vector<BorderLineSegment> &borderLineSegments,
 								      std::vector<Region>& regionPs)
 {
+	result_mesh_ = mesh;
+
 	for (const auto & crAuto : cr)
 	{
 		if (crAuto.isDeleted)
@@ -2633,19 +2666,19 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 		rPsAuto.isDeleted = isDeleted;
 	}
 
-	mesh.request_face_status();
-	mesh.request_edge_status();
-	mesh.request_vertex_status();
+	result_mesh_.request_face_status();
+	result_mesh_.request_edge_status();
+	result_mesh_.request_vertex_status();
 
 	for (unsigned int i = 0; i < regionPs.size(); ++i)
 	{
 		if (regionPs[i].isDeleted)
 		{
 			for (auto & fh : regionPs[i].faces)
-				mesh.delete_face(fh, true);
+				result_mesh_.delete_face(fh, true);
 		}
 	}
-	mesh.garbage_collection();
+	result_mesh_.garbage_collection();
 }
 
 void CGLProjectInRibbonView::ContourLineBasedMethod()
@@ -2695,7 +2728,6 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	}
 
 	//生成平面区域
-	std::vector<Region> regionPs;
 	for (unsigned int i = 0; i < deletingEdges.size(); ++i)
 	{
 		std::map<MyMesh::FaceHandle, bool> mp;
@@ -2709,16 +2741,16 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 			{
 				newRegion.faces.push_back(i.first);
 			}
-			regionPs.push_back(newRegion);
+			regionPs_.push_back(newRegion);
 		}
 	}
 
 	int borderSum = 0;
-	for (unsigned int i = 0; i < regionPs.size(); ++i)
+	for (unsigned int i = 0; i < regionPs_.size(); ++i)
 	{
-		for (unsigned int j = 0; j < regionPs[i].faces.size(); ++j)
+		for (unsigned int j = 0; j < regionPs_[i].faces.size(); ++j)
 		{
-			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs[i].faces[j]);
+			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs_[i].faces[j]);
 			while (fe_iter.is_valid())
 			{
 				if (mesh_.property(status, *fe_iter) == UNDETERMINED)
@@ -2737,14 +2769,14 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		}
 	}
 
-	cout << "Generated " << regionPs.size() << " " << "regions..." << endl;
+	cout << "Generated " << regionPs_.size() << " " << "regions..." << endl;
 	cout << "Generated " << borderSum << " " << "borders..." << endl;
 
-	for (unsigned int i = 0; i < regionPs.size(); ++i)
+	for (unsigned int i = 0; i < regionPs_.size(); ++i)
 	{
-		for (unsigned int j = 0; j < regionPs[i].faces.size(); ++j)
+		for (unsigned int j = 0; j < regionPs_[i].faces.size(); ++j)
 		{
-			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs[i].faces[j]);
+			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs_[i].faces[j]);
 			while (fe_iter.is_valid())
 			{
 				if (mesh_.property(status, *fe_iter) == BORDER)
@@ -2791,7 +2823,7 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 
 		for (const auto & j : border_line_segments_[i].RegionIDs)
 		{
-			regionPs[j].blss.insert(i);
+			regionPs_[j].blss.insert(i);
 		}
 	}
 
@@ -2811,13 +2843,13 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 
 	cout << "Deleted 2 connect regions..." << endl;
 
-	DeleteMyMesh(mesh_, connectRegions, border_line_segments_, regionPs);
+	DeleteMyMesh(mesh_, connectRegions, border_line_segments_, regionPs_);
 
 	cout << "Mesh information after simplified : " 
-	<< "vertices : " << mesh_.n_vertices() << " "
-	<< "faces : " << mesh_.n_faces() << endl;
+	<< "vertices : " << result_mesh_.n_vertices() << " "
+	<< "faces : " << result_mesh_.n_faces() << endl;
 
-	if (!OpenMesh::IO::write_mesh(mesh_, "result.off"))
+	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
 	{
 		cout << "Writing to result.off failed..." << endl;
 	}
@@ -2876,7 +2908,7 @@ void CGLProjectInRibbonView::OnGenerateBorderLine()
 	for (int i = 0; i < border_line_segments_.size(); ++i)
 	{
 		auto & bls = border_line_segments_[i];
-		border_line_segments_gpu.push_back(gpu::Edge(
+		border_line_segments_gpu_.push_back(gpu::Edge(
 			gpu::Point(bls.A.x, bls.A.y, bls.A.z),
 			gpu::Point(bls.B.x, bls.B.y, bls.B.z)));
 	}
@@ -2888,7 +2920,74 @@ void CGLProjectInRibbonView::OnGenerateBorderLine()
 void CGLProjectInRibbonView::OnGenerateConnectFaces()
 {
 	// TODO:  在此添加命令处理程序代码
+	if (regionPs_.empty())
+	{
+		MessageBox(_T("请先执行算法，产生连通区域！"));
+		return;
+	}
+
 	cout << "Generating connect faces ..." << endl;
+	ifDrawRegions = true;
+
+	vector<Color> colorList;
+	vector<Color> excludedColor = { Color(0.0, 0.0, 0.0) };
+	GenerateUniqueColorList(regionPs_.size(), colorList, excludedColor);
+
+	MyMesh::FaceVertexIter fv_it;
+
+	MyMesh::Point p1, p2, p3;
+	gpu::Point gp1, gp2, gp3;
+	glm::vec3 glm_p1, glm_p2, glm_p3;
+	glm::vec3 n;
+	for (int i = 0; i < regionPs_.size(); ++i)
+	{
+		gpu::Region new_region;
+		auto & region = regionPs_[i];
+		Color & color = colorList[i];
+		for (int j = 0; j < region.faces.size(); ++j)
+		{
+			auto & face = region.faces[j];
+			fv_it = mesh_.fv_iter(face);
+			if (!fv_it.is_valid())
+			{
+				cout << "Region " << i << "face " << j << "is not valid!" << endl;
+				system("pause");
+			}
+
+
+			p1 = mesh_.point(*fv_it);
+			glm_p1 = glm::vec3(p1[0], p1[1], p1[2]);
+			++fv_it;
+			p2 = mesh_.point(*fv_it);
+			glm_p2 = glm::vec3(p2[0], p2[1], p2[2]);
+			++fv_it;
+			p3 = mesh_.point(*fv_it);
+			glm_p3 = glm::vec3(p3[0], p3[1], p3[2]);
+
+			n = glm::normalize(glm::cross(glm_p2 - glm_p1, glm_p3 - glm_p2));
+
+			gp1.position = glm_p1;
+			gp2.position = glm_p2;
+			gp3.position = glm_p3;
+
+			gp1.normal = n;
+			gp2.normal = n;
+			gp3.normal = n;
+
+			gp1.set_color(color.R, color.G, color.B);
+			gp2.set_color(color.R, color.G, color.B);
+			gp3.set_color(color.R, color.G, color.B);
+
+			new_region.points.push_back(gp1);
+			new_region.points.push_back(gp2);
+			new_region.points.push_back(gp3);
+		}
+
+		regionPs_gpu_.push_back(new_region);
+	}
+
+	cout << "Connect regions generate completed ..." << endl;
+	Invalidate();
 }
 
 
@@ -2919,7 +3018,7 @@ void CGLProjectInRibbonView::DrawLine(float line_width, float r, float g, float 
 	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
 	glBindVertexArray(border_line_gm_.VAO);
-	glDrawElements(GL_LINES, border_line_segments_gpu.size() * 2, GL_UNSIGNED_INT, 0);
+	glDrawElements(GL_LINES, border_line_segments_gpu_.size() * 2, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 
 }
@@ -2932,15 +3031,15 @@ void CGLProjectInRibbonView::InitLineData()
 		auto &vbo = border_line_gm_.VBO;
 		auto &ebo = border_line_gm_.EBO;
 
-		if (!indices_.empty())
+		if (!gpuindices_.empty())
 		{
-			indices_.clear();
+			gpuindices_.clear();
 		}
 
-		for (unsigned int i = 0; i < border_line_segments_gpu.size(); ++i)
+		for (unsigned int i = 0; i < border_line_segments_gpu_.size(); ++i)
 		{
-			indices_.push_back(2 * i);
-			indices_.push_back(2 * i + 1);
+			gpuindices_.push_back(2 * i);
+			gpuindices_.push_back(2 * i + 1);
 		}
 
 		glGenVertexArrays(1, &vao);
@@ -2948,12 +3047,12 @@ void CGLProjectInRibbonView::InitLineData()
 		glGenBuffers(1, &ebo);
 
 		glBindVertexArray(vao);
-		assert(!border_line_segments_gpu.empty());
+		assert(!border_line_segments_gpu_.empty());
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, border_line_segments_gpu.size() * sizeof(gpu::Edge), &border_line_segments_gpu[0], GL_STATIC_DRAW);
-		assert(!indices_.empty());
+		glBufferData(GL_ARRAY_BUFFER, border_line_segments_gpu_.size() * sizeof(gpu::Edge), &border_line_segments_gpu_[0], GL_STATIC_DRAW);
+		assert(!gpuindices_.empty());
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(GLuint), &indices_[0], GL_STATIC_DRAW);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, gpuindices_.size() * sizeof(GLuint), &gpuindices_[0], GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)0);
 		glBindVertexArray(0);
@@ -2961,4 +3060,92 @@ void CGLProjectInRibbonView::InitLineData()
 		border_line_gm_.isMeshTransportedToGPU = true;
 	}
 
+}
+
+void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region)
+{
+	if (!regionPs_gm_.isMeshTransportedToGPU)
+	{
+		auto &vao = regionPs_gm_.VAO;
+		auto &vbo = regionPs_gm_.VBO;
+		auto &ebo = regionPs_gm_.EBO;
+
+		if (!gpuindices_.empty())
+		{
+			gpuindices_.clear();
+		}
+
+		typedef unsigned int uint;
+		uint indice = 0;
+		for (uint i = 0; i < region.size(); ++i)
+		{
+			for (uint j = 0; j < region[i].points.size(); ++j)
+			{
+				gpuindices_.push_back(indice);
+				++indice;
+			}
+		}
+
+		num_regionPs_points = gpuindices_.size();
+
+		if (!gpupoints_.empty())
+		{
+			gpupoints_.clear();
+		}
+
+		for (uint i = 0; i < region.size(); ++i)
+		{
+			for (uint j = 0; j < region[i].points.size(); ++j)
+			{
+				auto & point = region[i].points[j];
+				gpupoints_.push_back(point);
+			}
+		}
+
+		glGenVertexArrays(1, &vao);
+		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+
+		glBindVertexArray(vao);
+		assert(!region.empty());
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+		glBufferData(GL_ARRAY_BUFFER, num_regionPs_points * sizeof(gpu::Point), &gpupoints_[0], GL_STATIC_DRAW);
+		assert(!gpuindices_.empty());
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, gpuindices_.size() * sizeof(GLuint), &gpuindices_[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)offsetof(gpu::Point, normal));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)offsetof(gpu::Point, color));
+		glBindVertexArray(0);
+
+		regionPs_gm_.isMeshTransportedToGPU = true;
+	}
+}
+
+void CGLProjectInRibbonView::DrawRegions(MeshGpuManager& region_gm)
+{
+	InitRegionsData(regionPs_gpu_);
+
+	region_shader_->Use();
+
+	matrix_view_ = camera_->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(region_shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
+	glUniformMatrix4fv(glGetUniformLocation(region_shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(matrix_view_));
+
+	matrix_model_ = glm::mat4(1.0);
+	matrix_model_ = matrix_rotation_;
+	matrix_model_ = glm::scale(matrix_model_, glm::vec3(num_model_scale_));
+	matrix_model_ = glm::translate(matrix_model_, glm::vec3(-focus_point_.x, -focus_point_.y, -focus_point_.z));
+	glUniformMatrix4fv(glGetUniformLocation(region_shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
+
+	InitDirectionLighting(*region_shader_);
+	InitMaterial(*region_shader_);
+	glBindVertexArray(region_gm.VAO);
+	glDrawElements(GL_TRIANGLES, num_regionPs_points, GL_UNSIGNED_INT, 0);
+	cout << "Has " << num_regionPs_points << " triangles ..."<< endl;
+	glBindVertexArray(0);
 }

@@ -127,6 +127,10 @@ namespace gpu{
 		Point A;
 		Point B;
 	};
+
+	struct Region {
+		vector<Point> points;
+	};
 };
 
 namespace sms = CGAL::Surface_mesh_simplification;
@@ -405,8 +409,10 @@ public:
 	void DrawSmoothMesh();
 	void TimeEnd();
 	void TimeStart();
-	void InitMaterial(Color& pColor);
-	void InitDirectionlLighting();
+	void InitMaterial(Color& pColor, Shader & shader);
+	void InitMaterial(Shader & shader);
+	void InitDirectionLighting();
+	void InitDirectionLighting(Shader& shader);
 
 #pragma endregion rendering_method
 #pragma region event_handler
@@ -467,6 +473,7 @@ private:
 	CString file_path_;
 	Shader* shader_;
 	Shader* line_shader_;
+	Shader* region_shader_;
 	Shader* text_shader_;
 	Model* model_;
 	string model_name_;
@@ -539,7 +546,10 @@ private:
 
 	//Data for contour line based method
 	MyMesh mesh_;
+	MyMesh result_mesh_;
 	std::vector<BorderLineSegment> border_line_segments_;
+	std::vector<Region> regionPs_;
+
 	//Data for contour line based rendering
 	struct MeshGpuManager
 	{
@@ -557,18 +567,27 @@ private:
 			glDeleteBuffers(1, &EBO);
 		}
 	};
+	vector<GLuint> gpuindices_;
+	vector<gpu::Point> gpupoints_;
 
-	vector<gpu::Edge> border_line_segments_gpu;
+	vector<gpu::Edge> border_line_segments_gpu_;
 	MeshGpuManager border_line_gm_;
-	vector<GLuint> indices_;
 	bool ifDrawBorderLine;
+
+	vector<gpu::Region> regionPs_gpu_;
+	MeshGpuManager regionPs_gm_;
+	unsigned int num_regionPs_points;
+	bool ifDrawRegions;
+
+
 
 public :
 	
 	void DrawLine(float line_width, float r, float g, float b);
 	void InitLineData();
 	
-
+	void DrawRegions(MeshGpuManager& region_gm);
+	void InitRegionsData(vector<gpu::Region>& region);
 
 
 	////Log System
