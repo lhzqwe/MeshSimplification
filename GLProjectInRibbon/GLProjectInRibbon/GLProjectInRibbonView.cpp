@@ -31,10 +31,6 @@
 
 #define _CRTDBG_MAP_ALLOC
 
-#include <stdlib.h>
-#include <crtdbg.h>
-#include <windows.h>
-
 #include <map>
 
 // New codes end.
@@ -84,7 +80,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_START, &CGLProjectInRibbonView::OnStartCLBAlgorithm)
 	ON_COMMAND(ID_GENERATE_BORDR_LINE, &CGLProjectInRibbonView::OnGenerateBorderLine)
 	ON_COMMAND(ID_GENERATE_CONNECT_FACES, &CGLProjectInRibbonView::OnGenerateConnectFaces)
-	ON_COMMAND(ID_GENERATE_MAXIMUM_CONNECT_REGIONS, &CGLProjectInRibbonView::OnGenerateMaximumConnectRegions)
+	ON_COMMAND(ID_GENERATE_MAXIMUM_CONNECT_REGIONS, &CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -125,8 +121,27 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 
 	//DrawModel();
 
-	if (ifDrawBorderLine) DrawLine(5.0f, 1.0f, 0.0, 0.0f);
+	/*if (ifDrawBorderLine) DrawLine(5.0f, 1.0f, 0.0, 0.0f);
 	if (ifDrawRegions) DrawRegions(regionPs_gm_);
+	if (ifDrawConnectBorderLines) DrawConnectBorderLine(5.0f);*/
+
+	switch (draw_type_)
+	{
+	case DrawType::NORMAL_MESH:
+		DrawModel();
+		break;
+	case DrawType::REGION:
+		DrawRegions(regionPs_gm_);
+		break;
+	case DrawType::BORDER_LINE_SEGMENT:
+		DrawLine(5.0f, 1.0f, 0.0f, 0.0f);
+		break;
+	case DrawType::CONNECT_BORDER_LINE_SEGMENT:
+		DrawConnectBorderLine(5.0f);
+		break;
+	default:
+		break;
+	}
 
 	//DrawModelInNormalMode();
 
@@ -418,6 +433,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	ifDrawBorderLine = false;
 	ifDrawRegions = false;
+	ifDrawConnectBorderLines = false;
 	// New codes end.
 	// //////////////////////////////////////////////////////////////
 
@@ -1490,6 +1506,11 @@ void CGLProjectInRibbonView::SetDrawingMode(int drawingMode)
 	drawing_mode_ = drawingMode;
 }
 
+void CGLProjectInRibbonView::SetDrawingMode(DrawType draw_type)
+{
+	draw_type_ = draw_type;
+}
+
 void CGLProjectInRibbonView::ConstructTree(int indexMeshWithMaxSDF)
 {
 	vector<bool> usedMesh(mesh_graph_.size(), false);
@@ -1734,6 +1755,7 @@ void CGLProjectInRibbonView::OnNormalDisplay()
 	SetupMesh(normal_mesh_);
 	AdjustCameraView(normal_mesh_);
 	SetDrawingMode(DRAW_NORMAL);
+	SetDrawingMode(DrawType(DrawType::NORMAL_MESH));
 
 	Invalidate();
 }
@@ -2681,6 +2703,35 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 	result_mesh_.garbage_collection();
 }
 
+void CGLProjectInRibbonView::CombineConnectRegions()
+{
+	assert(!connectBorderLines_.empty());
+
+	unordered_map<int, int> count_map; // regionId -> count
+	for (unsigned int i = 0; i < connectBorderLines_.size(); ++i)
+	{
+		count_map.clear();
+		for (auto & blsId : connectBorderLines_[i].blss)
+		{
+			for (auto & regionID : border_line_segments_[blsId].RegionIDs)
+			{
+				if (count_map.count(regionID) > 0)
+				{
+					++count_map[regionID];
+				}
+				else
+				{
+					count_map[regionID] = 1;
+				}
+			}
+		}
+		for (const auto & count : count_map)
+		{
+			if (count.second > 1) connectBorderLines_[i].regionIDs.insert(count.first);
+		}
+	}
+}
+
 void CGLProjectInRibbonView::ContourLineBasedMethod()
 {
 	OpenMesh::IO::Options opt;
@@ -2805,7 +2856,7 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	}
 
 	cout << "Border line segments : " << endl;
-	for (int i = 0; i < border_line_segments_.size(); ++i)
+	for (unsigned int i = 0; i < border_line_segments_.size(); ++i)
 	{
 		const auto & bls = border_line_segments_[i];
 		cout << "(" << bls.A.x << ", " << bls.A.y << ", " << bls.A.z << ")"
@@ -2827,23 +2878,24 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		}
 	}
 
-	std::vector<ConnectRegion> connectRegions;
 	for (auto & bp : borderPointAdjGraph)
 	{
 		if (bp.second.isVisited) continue;
 		ConnectRegion newRegion;
 		BorderPoint startPoint(bp.first);
 		GraphBFS(borderPointAdjGraph, startPoint, newRegion);
-		connectRegions.push_back(newRegion);
+		connectBorderLines_.push_back(newRegion);
 	}
 
-	cout << "Generated " << connectRegions.size() << " maximum connected regions..." << endl;
+	cout << "Generated " << connectBorderLines_.size() << " maximum connected regions..." << endl;
+	CombineConnectRegions();
+	cout << "Combine connect regions completed ..." << endl;
 
-	DeletedRegionAnalysis(connectRegions, borderPointAdjGraph, border_line_segments_);
+	DeletedRegionAnalysis(connectBorderLines_, borderPointAdjGraph, border_line_segments_);
 
 	cout << "Deleted 2 connect regions..." << endl;
 
-	DeleteMyMesh(mesh_, connectRegions, border_line_segments_, regionPs_);
+	DeleteMyMesh(mesh_, connectBorderLines_, border_line_segments_, regionPs_);
 
 	cout << "Mesh information after simplified : " 
 	<< "vertices : " << result_mesh_.n_vertices() << " "
@@ -2905,14 +2957,18 @@ void CGLProjectInRibbonView::OnGenerateBorderLine()
 	cout << "Generate border line ..." << endl;
 	ifDrawBorderLine = true;
 
-	for (int i = 0; i < border_line_segments_.size(); ++i)
+	for (unsigned int i = 0; i < border_line_segments_.size(); ++i)
 	{
 		auto & bls = border_line_segments_[i];
-		border_line_segments_gpu_.push_back(gpu::Edge(
+		gpu::Edge new_edge(
 			gpu::Point(bls.A.x, bls.A.y, bls.A.z),
-			gpu::Point(bls.B.x, bls.B.y, bls.B.z)));
-	}
+			gpu::Point(bls.B.x, bls.B.y, bls.B.z));
 
+		new_edge.set_color(1.0f, 0.0f, 0.0f);
+
+		border_line_segments_gpu_.push_back(new_edge);
+	}
+	SetDrawingMode(DrawType(DrawType::BORDER_LINE_SEGMENT));
 	Invalidate();
 }
 
@@ -2939,12 +2995,12 @@ void CGLProjectInRibbonView::OnGenerateConnectFaces()
 	gpu::Point gp1, gp2, gp3;
 	glm::vec3 glm_p1, glm_p2, glm_p3;
 	glm::vec3 n;
-	for (int i = 0; i < regionPs_.size(); ++i)
+	for (unsigned int i = 0; i < regionPs_.size(); ++i)
 	{
 		gpu::Region new_region;
 		auto & region = regionPs_[i];
 		Color & color = colorList[i];
-		for (int j = 0; j < region.faces.size(); ++j)
+		for (unsigned int j = 0; j < region.faces.size(); ++j)
 		{
 			auto & face = region.faces[j];
 			fv_it = mesh_.fv_iter(face);
@@ -2987,14 +3043,46 @@ void CGLProjectInRibbonView::OnGenerateConnectFaces()
 	}
 
 	cout << "Connect regions generate completed ..." << endl;
+	InitRegionsData(regionPs_gpu_, RegionType(RegionType::CONNECT_REGION));
+	cout << "Transport connect regions data to gpu ..." << endl;
+
+	SetDrawingMode(DrawType(DrawType::REGION));
 	Invalidate();
 }
 
 
-void CGLProjectInRibbonView::OnGenerateMaximumConnectRegions()
+void CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines()
 {
 	// TODO:  在此添加命令处理程序代码
-	cout << "Generating connnect regions ..." << endl;
+	cout << "Generating maximum connnect border lines ..." << endl;
+	if (connectBorderLines_.empty())
+	{
+		MessageBox(_T("请先执行算法，产生最大连通边界！"));
+		return;
+	}
+
+	ifDrawConnectBorderLines = true;
+
+	vector<Color> colorList;
+	vector<Color> excludedColor = { Color(0.0, 0.0, 0.0) };
+	GenerateUniqueColorList(connectBorderLines_.size(), colorList, excludedColor);
+
+	for (unsigned int i = 0; i < connectBorderLines_.size(); ++i)
+	{
+		for (auto & blsIdx : connectBorderLines_[i].blss)
+		{
+			auto & bls = border_line_segments_[blsIdx];
+			gpu::Edge new_edge(
+				gpu::Point(bls.A.x, bls.A.y, bls.A.z),
+				gpu::Point(bls.B.x, bls.B.y, bls.B.z));
+			auto & color = colorList[i];
+			new_edge.set_color(color.R, color.G, color.B);
+			connectBorderLines_gpu_.push_back(new_edge);
+		}
+	}
+	
+	SetDrawingMode(DrawType(DrawType::CONNECT_BORDER_LINE_SEGMENT));
+	Invalidate();
 }
 
 void CGLProjectInRibbonView::DrawLine(float line_width, float r, float g, float b)
@@ -3005,7 +3093,6 @@ void CGLProjectInRibbonView::DrawLine(float line_width, float r, float g, float 
 
 	glLineWidth(line_width);
 	//Setting Color
-	glUniform3f(glGetUniformLocation(line_shader_->Program, "a2f_color"), r, g, b);
 
 	matrix_view_ = camera_->GetViewMatrix();
 	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
@@ -3019,6 +3106,31 @@ void CGLProjectInRibbonView::DrawLine(float line_width, float r, float g, float 
 
 	glBindVertexArray(border_line_gm_.VAO);
 	glDrawElements(GL_LINES, border_line_segments_gpu_.size() * 2, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
+
+}
+
+void CGLProjectInRibbonView::DrawConnectBorderLine(float line_width)
+{
+	InitConnectBorderLine();
+
+	line_shader_->Use();
+
+	glLineWidth(line_width);
+	//Setting Color
+
+	matrix_view_ = camera_->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(matrix_view_));
+
+	matrix_model_ = glm::mat4(1.0);
+	matrix_model_ = matrix_rotation_;
+	matrix_model_ = glm::scale(matrix_model_, glm::vec3(num_model_scale_));
+	matrix_model_ = glm::translate(matrix_model_, glm::vec3(-focus_point_.x, -focus_point_.y, -focus_point_.z));
+	glUniformMatrix4fv(glGetUniformLocation(line_shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
+
+	glBindVertexArray(connectBorderLines_gm_.VAO);
+	glDrawElements(GL_LINES, connectBorderLines_gpu_.size() * 2, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 
 }
@@ -3055,6 +3167,8 @@ void CGLProjectInRibbonView::InitLineData()
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, gpuindices_.size() * sizeof(GLuint), &gpuindices_[0], GL_STATIC_DRAW);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)offsetof(gpu::Point, color));
 		glBindVertexArray(0);
 
 		border_line_gm_.isMeshTransportedToGPU = true;
@@ -3062,13 +3176,67 @@ void CGLProjectInRibbonView::InitLineData()
 
 }
 
-void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region)
+void CGLProjectInRibbonView::InitConnectBorderLine()
 {
-	if (!regionPs_gm_.isMeshTransportedToGPU)
+	if (!connectBorderLines_gm_.isMeshTransportedToGPU)
 	{
-		auto &vao = regionPs_gm_.VAO;
-		auto &vbo = regionPs_gm_.VBO;
-		auto &ebo = regionPs_gm_.EBO;
+		auto &vao = connectBorderLines_gm_.VAO;
+		auto &vbo = connectBorderLines_gm_.VBO;
+		auto &ebo = connectBorderLines_gm_.EBO;
+
+		if (!gpuindices_.empty())
+		{
+			gpuindices_.clear();
+		}
+
+		for (unsigned int i = 0; i < connectBorderLines_gpu_.size(); ++i)
+		{
+			gpuindices_.push_back(2 * i);
+			gpuindices_.push_back(2 * i + 1);
+		}
+
+		glGenVertexArrays(1, &vao);
+		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+
+		glBindVertexArray(vao);
+		assert(!connectBorderLines_gpu_.empty());
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, connectBorderLines_gpu_.size() * sizeof(gpu::Edge), &connectBorderLines_gpu_[0], GL_STATIC_DRAW);
+		assert(!gpuindices_.empty());
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, gpuindices_.size() * sizeof(GLuint), &gpuindices_[0], GL_STATIC_DRAW);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)offsetof(gpu::Point, color));
+		glBindVertexArray(0);
+
+		connectBorderLines_gm_.isMeshTransportedToGPU = true;
+	}
+
+}
+
+MeshGpuManager& CGLProjectInRibbonView::WhichRegionType(RegionType type)
+{
+	switch (type)
+	{
+	case RegionType::CONNECT_REGION: return regionPs_gm_; break;
+	case RegionType::MAXIMUM_CONNECT_REGION: return connectBorderLines_gm_; break;
+	default: return default_gm_;
+	}
+	return default_gm_;
+}
+
+void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region, RegionType type)
+{
+	auto& gm = WhichRegionType(type);
+
+	if (!gm.isMeshTransportedToGPU)
+	{
+		auto &vao = gm.VAO;
+		auto &vbo = gm.VBO;
+		auto &ebo = gm.EBO;
 
 		if (!gpuindices_.empty())
 		{
@@ -3086,7 +3254,7 @@ void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region)
 			}
 		}
 
-		num_regionPs_points = gpuindices_.size();
+		gm.indiceSize = gpuindices_.size();
 
 		if (!gpupoints_.empty())
 		{
@@ -3110,7 +3278,7 @@ void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region)
 		assert(!region.empty());
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-		glBufferData(GL_ARRAY_BUFFER, num_regionPs_points * sizeof(gpu::Point), &gpupoints_[0], GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, gpuindices_.size() * sizeof(gpu::Point), &gpupoints_[0], GL_STATIC_DRAW);
 		assert(!gpuindices_.empty());
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, gpuindices_.size() * sizeof(GLuint), &gpuindices_[0], GL_STATIC_DRAW);
@@ -3122,14 +3290,12 @@ void CGLProjectInRibbonView::InitRegionsData(vector<gpu::Region>& region)
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(gpu::Point), (GLvoid*)offsetof(gpu::Point, color));
 		glBindVertexArray(0);
 
-		regionPs_gm_.isMeshTransportedToGPU = true;
+		gm.isMeshTransportedToGPU = true;
 	}
 }
 
 void CGLProjectInRibbonView::DrawRegions(MeshGpuManager& region_gm)
 {
-	InitRegionsData(regionPs_gpu_);
-
 	region_shader_->Use();
 
 	matrix_view_ = camera_->GetViewMatrix();
@@ -3145,7 +3311,6 @@ void CGLProjectInRibbonView::DrawRegions(MeshGpuManager& region_gm)
 	InitDirectionLighting(*region_shader_);
 	InitMaterial(*region_shader_);
 	glBindVertexArray(region_gm.VAO);
-	glDrawElements(GL_TRIANGLES, num_regionPs_points, GL_UNSIGNED_INT, 0);
-	cout << "Has " << num_regionPs_points << " triangles ..."<< endl;
+	glDrawElements(GL_TRIANGLES, region_gm.indiceSize, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 }

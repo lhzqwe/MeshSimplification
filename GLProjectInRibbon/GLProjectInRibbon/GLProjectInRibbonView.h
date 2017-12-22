@@ -126,6 +126,12 @@ namespace gpu{
 
 		Point A;
 		Point B;
+
+		void set_color(float r, float g, float b)
+		{
+			A.set_color(r, g, b);
+			B.set_color(r, g, b);
+		}
 	};
 
 	struct Region {
@@ -134,6 +140,35 @@ namespace gpu{
 };
 
 namespace sms = CGAL::Surface_mesh_simplification;
+
+struct MeshGpuManager
+{
+	MeshGpuManager() : isMeshTransportedToGPU(false), indiceSize(0) {};
+	~MeshGpuManager(){};
+
+	GLuint VAO, VBO, EBO;
+	bool isMeshTransportedToGPU;
+	GLsizei indiceSize;
+
+	void reset()
+	{
+		glDeleteVertexArrays(1, &VAO);
+		glDeleteBuffers(1, &VBO);
+		glDeleteBuffers(1, &EBO);
+	}
+};
+
+enum class RegionType{
+	CONNECT_REGION,
+	MAXIMUM_CONNECT_REGION
+};
+
+enum class DrawType{
+	NORMAL_MESH,
+	REGION,
+	BORDER_LINE_SEGMENT,
+	CONNECT_BORDER_LINE_SEGMENT
+};
 
 class CGLProjectInRibbonView : public CView
 {
@@ -261,7 +296,9 @@ class CGLProjectInRibbonView : public CView
 
 		std::vector<BorderPoint> points;
 		typedef int blsIdx;
+		typedef int regionPIdx;
 		std::set<blsIdx> blss;
+		std::set<regionPIdx> regionIDs;
 		float meanLength;
 		bool isDeleted;
 
@@ -377,7 +414,12 @@ public:
 		std::vector<ConnectRegion> & cr,
 		std::vector<BorderLineSegment> &borderLineSegments,
 		std::vector<Region>& regionPs);
+
+	void CombineConnectRegions();
+
 	void ContourLineBasedMethod();
+
+
 #pragma endregion algorithm_method
 #pragma region rendering_method
 public:
@@ -394,6 +436,7 @@ public:
 
 public:
 	void SetDrawingMode(int drawingMode);
+	void SetDrawingMode(DrawType draw_type);
 
 	// Overrides
 public:
@@ -549,24 +592,12 @@ private:
 	MyMesh result_mesh_;
 	std::vector<BorderLineSegment> border_line_segments_;
 	std::vector<Region> regionPs_;
+	std::vector<ConnectRegion> connectBorderLines_;
 
 	//Data for contour line based rendering
-	struct MeshGpuManager
-	{
-		MeshGpuManager() : isMeshTransportedToGPU(false), indiceSize(0) {};
-		~MeshGpuManager(){};
 
-		GLuint VAO, VBO, EBO;
-		bool isMeshTransportedToGPU;
-		GLsizei indiceSize;
+	DrawType draw_type_;
 
-		void reset()
-		{
-			glDeleteVertexArrays(1, &VAO);
-			glDeleteBuffers(1, &VBO);
-			glDeleteBuffers(1, &EBO);
-		}
-	};
 	vector<GLuint> gpuindices_;
 	vector<gpu::Point> gpupoints_;
 
@@ -576,18 +607,24 @@ private:
 
 	vector<gpu::Region> regionPs_gpu_;
 	MeshGpuManager regionPs_gm_;
-	unsigned int num_regionPs_points;
 	bool ifDrawRegions;
 
+	vector<gpu::Edge> connectBorderLines_gpu_;
+	MeshGpuManager connectBorderLines_gm_;
+	bool ifDrawConnectBorderLines;
 
+	MeshGpuManager default_gm_;
 
 public :
 	
 	void DrawLine(float line_width, float r, float g, float b);
+	void DrawConnectBorderLine(float line_width);
 	void InitLineData();
+	void InitConnectBorderLine();
 	
 	void DrawRegions(MeshGpuManager& region_gm);
-	void InitRegionsData(vector<gpu::Region>& region);
+	void InitRegionsData(vector<gpu::Region>& region, RegionType type);
+	MeshGpuManager& WhichRegionType(RegionType type);
 
 
 	////Log System
@@ -602,7 +639,7 @@ public:
 	CGLProjectInRibbonDoc* GetDocument() const;
 	afx_msg void OnGenerateBorderLine();
 	afx_msg void OnGenerateConnectFaces();
-	afx_msg void OnGenerateMaximumConnectRegions();
+	afx_msg void OnGenerateMaximumConnectBorderLines();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const
