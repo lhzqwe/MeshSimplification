@@ -31,6 +31,10 @@
 
 #define _CRTDBG_MAP_ALLOC
 
+using std::cout;
+using std::cin;
+using std::endl;
+
 #include <map>
 
 // New codes end.
@@ -81,6 +85,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_GENERATE_BORDR_LINE, &CGLProjectInRibbonView::OnGenerateBorderLine)
 	ON_COMMAND(ID_GENERATE_CONNECT_FACES, &CGLProjectInRibbonView::OnGenerateConnectFaces)
 	ON_COMMAND(ID_GENERATE_MAXIMUM_CONNECT_REGIONS, &CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines)
+	ON_COMMAND(ID_DELETE_REGION, &CGLProjectInRibbonView::OnDeleteRegion)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -138,6 +143,9 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 		break;
 	case DrawType::CONNECT_BORDER_LINE_SEGMENT:
 		DrawConnectBorderLine(5.0f);
+		break;
+	case DrawType::DELETE_REGION :
+		DrawRegions(regionPs_gm_);
 		break;
 	default:
 		break;
@@ -2703,33 +2711,204 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 	result_mesh_.garbage_collection();
 }
 
-void CGLProjectInRibbonView::CombineConnectRegions()
+void CGLProjectInRibbonView::DFS(int nNum, int n)
 {
-	assert(!connectBorderLines_.empty());
-
-	unordered_map<int, int> count_map; // regionId -> count
-	for (unsigned int i = 0; i < connectBorderLines_.size(); ++i)
+	if (to_temp_[nNum - 1] == from_temp_[0])
 	{
-		count_map.clear();
-		for (auto & blsId : connectBorderLines_[i].blss)
+		if (nNum < vNum_)
 		{
-			for (auto & regionID : border_line_segments_[blsId].RegionIDs)
+			vNum_ = nNum;
+
+			for (int i = 0; i < vNum_; ++i)
 			{
-				if (count_map.count(regionID) > 0)
-				{
-					++count_map[regionID];
-				}
-				else
-				{
-					count_map[regionID] = 1;
-				}
+				fromV_[i] = from_temp_[i];
+				toV_[i] = to_temp_[i];
 			}
 		}
-		for (const auto & count : count_map)
+		return;
+	}
+
+	for (int i = 1; i < n; ++i)
+	{
+		if (!vis_[i] && to_temp_[nNum - 1] == from_vertex_[i])
 		{
-			if (count.second > 1) connectBorderLines_[i].regionIDs.insert(count.first);
+			from_temp_[nNum] = from_vertex_[i];
+			to_temp_[nNum] = to_vertex_[i];
+			vis_[i] = true;
+			DFS(nNum + 1, n);
 		}
 	}
+
+}
+
+void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
+{
+	if (mesh.n_vertices() == 0)
+	{
+		cout << "Mesh is empty, cannot finish hole filling..." << endl;
+		return;
+	}
+
+	vector<MyMesh::VertexHandle> AddedFace;
+	int i, edge_num = 0;
+
+	//获取孔洞半边集合
+	for (MyMesh::HalfedgeIter it = mesh.halfedges_begin(); it != mesh.halfedges_end(); ++it)
+	{
+		MyMesh::HalfedgeHandle he = *it;
+		if (mesh.is_boundary(he))
+		{
+			from_vertex_[edge_num] = mesh.from_vertex_handle(he);
+			to_vertex_[edge_num] = mesh.to_vertex_handle(he);
+			++edge_num;
+		}
+	}
+
+	if (edge_num == 0) return;
+	vis_.resize(edge_num);
+	fill(vis_.begin(), vis_.end(), false);
+
+	int num_hole = 0;
+
+	typedef unsigned int uint;
+	for (uint k = 0; k < vis_.size(); ++k)
+	{
+		if (vis_[k] == true) continue;
+
+		++num_hole;
+
+		from_temp_.clear();
+		to_temp_.clear();
+		fromV_.clear();
+		toV_.clear();
+
+		from_temp_[0] = from_vertex_[k];
+		to_temp_[0] = to_vertex_[k];
+
+		vis_[k] = true;
+		vNum_ = 10001;
+		DFS(1, edge_num);
+		cout << "The total number of edges : " << edge_num << endl;
+		cout << "The number in this hole is : " << vNum_ << endl;
+
+		double sum = 0.0f;
+		for (int j = 0; j < vNum_; ++j)
+		{
+			auto s = mesh.point(fromV_[j]);
+			auto e = mesh.point(toV_[j]);
+			sum += glm::length(glm::vec3(s[0] - e[0], s[1] - e[1], s[2] - e[2]));
+		}
+		double avg_len = sum / vNum_;
+
+		while (vNum_ > 3)
+		{
+			double min_ang = 360;
+			int pos = 0, nxt;
+			MyMesh::VertexHandle vVertex0, vVertex1, vVertex2;
+			for (i = 0; i < vNum_; ++i)
+			{
+				nxt = (i + 1) % vNum_;
+
+				auto s1 = mesh.point(fromV_[i]);
+				auto e1 = mesh.point(toV_[i]);
+
+				auto s2 = mesh.point(fromV_[nxt]);
+				auto e2 = mesh.point(toV_[nxt]);
+
+				MyMesh::Normal v1(s1.data()[0] - e1.data()[0], s1.data()[1] - e1.data()[1], s1.data()[2] - e1.data()[2]);
+				MyMesh::Normal v2(e2.data()[0] - s2.data()[0], e2.data()[1] - s2.data()[1], e2.data()[2] - s2.data()[2]);
+
+				MyMesh::HalfedgeHandle minPointHaleAge;
+				for (MyMesh::HalfedgeIter itx = mesh.halfedges_begin(); itx != mesh.halfedges_end(); ++itx)
+				{
+					MyMesh::HalfedgeHandle tmp = *itx;
+					if (mesh.from_vertex_handle(tmp) == fromV_[i] && mesh.to_vertex_handle(tmp) == toV_[i])
+					{
+						minPointHaleAge = tmp;
+						break;
+					}
+				}
+
+				double angle = mesh.calc_sector_angle(minPointHaleAge);
+				if (angle < min_ang)
+				{
+					min_ang = angle;
+					pos = i;
+					vVertex0 = fromV_[i];
+					vVertex1 = toV_[i];
+					vVertex2 = toV_[nxt];
+				}
+			}
+
+			MyMesh::Point p0 = mesh.point(vVertex0);
+			MyMesh::Point p1 = mesh.point(vVertex1);
+			MyMesh::Point p2 = mesh.point(vVertex2);
+			double dis = glm::length(glm::vec3(p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]));
+
+			if (dis > 2 * avg_len)
+			{
+				MyMesh::Point newPoint((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2, (p0[2] + p2[2]) / 2);
+				MyMesh::VertexHandle newVertexHandle = mesh.add_vertex(newPoint);
+				toV_[pos] = newVertexHandle;
+				fromV_[(pos + 1) & vNum_] = newVertexHandle;
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(newVertexHandle);
+				mesh.add_face(AddedFace);
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				AddedFace.push_back(newVertexHandle);
+				mesh.add_face(AddedFace);
+
+			}
+			else
+			{
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				mesh.add_face(AddedFace);
+
+				toV_[pos] = toV_[(pos + 1) % vNum_];
+				if (pos + 1 == vNum_)
+				{
+					pos = -1;
+				}
+
+				for (i = pos + 1; i < vNum_ - 1; ++i)
+				{
+					fromV_[i] = fromV_[i + 1];
+					toV_[i] = toV_[i + 1];
+				}
+
+				--vNum_;
+				cout << "vNum : " << vNum_ << endl;
+
+			}
+		}
+
+		if (vNum_ <= 3)
+		{
+			if (vNum_ != 0)
+			{
+				MyMesh::VertexHandle vVertex0 = fromV_[0];
+				MyMesh::VertexHandle vVertex1 = fromV_[1];
+				MyMesh::VertexHandle vVertex2 = fromV_[2];
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				mesh.add_face(AddedFace);
+			}
+		}
+	}
+
+	cout << "Repair " << num_hole <<  " hole finished ..." << endl;
 }
 
 void CGLProjectInRibbonView::ContourLineBasedMethod()
@@ -2887,19 +3066,18 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		connectBorderLines_.push_back(newRegion);
 	}
 
-	cout << "Generated " << connectBorderLines_.size() << " maximum connected regions..." << endl;
-	CombineConnectRegions();
-	cout << "Combine connect regions completed ..." << endl;
-
 	DeletedRegionAnalysis(connectBorderLines_, borderPointAdjGraph, border_line_segments_);
 
 	cout << "Deleted 2 connect regions..." << endl;
 
 	DeleteMyMesh(mesh_, connectBorderLines_, border_line_segments_, regionPs_);
 
+	RepairOpenMeshHole(result_mesh_);
+
 	cout << "Mesh information after simplified : " 
 	<< "vertices : " << result_mesh_.n_vertices() << " "
 	<< "faces : " << result_mesh_.n_faces() << endl;
+
 
 	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
 	{
@@ -3000,6 +3178,9 @@ void CGLProjectInRibbonView::OnGenerateConnectFaces()
 		gpu::Region new_region;
 		auto & region = regionPs_[i];
 		Color & color = colorList[i];
+
+		regionPs_[i].set_color(color.R, color.G, color.B);
+
 		for (unsigned int j = 0; j < region.faces.size(); ++j)
 		{
 			auto & face = region.faces[j];
@@ -3009,7 +3190,6 @@ void CGLProjectInRibbonView::OnGenerateConnectFaces()
 				cout << "Region " << i << "face " << j << "is not valid!" << endl;
 				system("pause");
 			}
-
 
 			p1 = mesh_.point(*fv_it);
 			glm_p1 = glm::vec3(p1[0], p1[1], p1[2]);
@@ -3313,4 +3493,95 @@ void CGLProjectInRibbonView::DrawRegions(MeshGpuManager& region_gm)
 	glBindVertexArray(region_gm.VAO);
 	glDrawElements(GL_TRIANGLES, region_gm.indiceSize, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
+}
+
+void CGLProjectInRibbonView::OnDeleteRegion()
+{
+	// TODO:  在此添加命令处理程序代码
+	if (regionPs_.empty())
+	{
+		cout << "Connect regionPs is not generated..." << endl;
+		MessageBox(_T("连通区域为空,请重新运行算法!"));
+		return;
+	}
+
+	typedef unsigned int uint;
+
+	for (uint i = 0; i < regionPs_.size(); ++i)
+	{
+		if (regionPs_[i].isDeleted)
+		{
+			regionPs_[i].set_color(1.0f, 0.0f, 0.0f);
+		}
+		else
+		{
+			regionPs_[i].set_color(1.0f, 1.0, 1.0f);
+		}
+	}
+
+	if (!regionPs_gpu_.empty())
+	{
+		regionPs_gpu_.clear();
+	}
+
+	MyMesh::FaceVertexIter fv_it;
+
+	MyMesh::Point p1, p2, p3;
+	gpu::Point gp1, gp2, gp3;
+	glm::vec3 glm_p1, glm_p2, glm_p3;
+	glm::vec3 n;
+	for (uint i = 0; i < regionPs_.size(); ++i)
+	{
+		gpu::Region new_region;
+		auto & region = regionPs_[i];
+		Color & color = region.color;
+
+		for (uint j = 0; j < region.faces.size(); ++j)
+		{
+			auto & face = region.faces[j];
+			fv_it = mesh_.fv_iter(face);
+			if (!fv_it.is_valid())
+			{
+				cout << "Region " << i << "face " << j << "is not valid!" << endl;
+				system("pause");
+			}
+
+			p1 = mesh_.point(*fv_it);
+			glm_p1 = glm::vec3(p1[0], p1[1], p1[2]);
+			++fv_it;
+			p2 = mesh_.point(*fv_it);
+			glm_p2 = glm::vec3(p2[0], p2[1], p2[2]);
+			++fv_it;
+			p3 = mesh_.point(*fv_it);
+			glm_p3 = glm::vec3(p3[0], p3[1], p3[2]);
+
+			n = glm::normalize(glm::cross(glm_p2 - glm_p1, glm_p3 - glm_p2));
+
+			gp1.position = glm_p1;
+			gp2.position = glm_p2;
+			gp3.position = glm_p3;
+
+			gp1.normal = n;
+			gp2.normal = n;
+			gp3.normal = n;
+
+			gp1.set_color(color.R, color.G, color.B);
+			gp2.set_color(color.R, color.G, color.B);
+			gp3.set_color(color.R, color.G, color.B);
+
+			new_region.points.push_back(gp1);
+			new_region.points.push_back(gp2);
+			new_region.points.push_back(gp3);
+		}
+
+		regionPs_gpu_.push_back(new_region);
+	}
+
+	cout << "Delete regions generate completed ..." << endl;
+	regionPs_gm_.reset();
+	InitRegionsData(regionPs_gpu_, RegionType(RegionType::CONNECT_REGION));
+	cout << "Transport delete regions data to gpu ..." << endl;
+
+	SetDrawingMode(DrawType(DrawType::DELETE_REGION));
+	Invalidate();
 }

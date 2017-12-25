@@ -155,6 +155,9 @@ struct MeshGpuManager
 		glDeleteVertexArrays(1, &VAO);
 		glDeleteBuffers(1, &VBO);
 		glDeleteBuffers(1, &EBO);
+
+		indiceSize = 0;
+		isMeshTransportedToGPU = false;
 	}
 };
 
@@ -167,7 +170,8 @@ enum class DrawType{
 	NORMAL_MESH,
 	REGION,
 	BORDER_LINE_SEGMENT,
-	CONNECT_BORDER_LINE_SEGMENT
+	CONNECT_BORDER_LINE_SEGMENT,
+	DELETE_REGION
 };
 
 class CGLProjectInRibbonView : public CView
@@ -250,6 +254,14 @@ class CGLProjectInRibbonView : public CView
 		typedef int blsIdx;
 		std::set<blsIdx> blss;
 		bool isDeleted;
+		Color color;
+
+		void set_color(float r, float g, float b)
+		{
+			color.R = r;
+			color.G = g;
+			color.B = b;
+		}
 	} Region;
 
 	typedef struct BorderLineSegment_
@@ -414,10 +426,17 @@ public:
 		std::vector<ConnectRegion> & cr,
 		std::vector<BorderLineSegment> &borderLineSegments,
 		std::vector<Region>& regionPs);
-
-	void CombineConnectRegions();
-
 	void ContourLineBasedMethod();
+	map<int, MyMesh::VertexHandle> from_vertex_;
+	map<int, MyMesh::VertexHandle> to_vertex_;
+	map<int, MyMesh::VertexHandle> from_temp_;
+	map<int, MyMesh::VertexHandle> to_temp_;
+	map<int, MyMesh::VertexHandle> fromV_;
+	map<int, MyMesh::VertexHandle> toV_;
+	vector<bool> vis_;
+	int vNum_;
+	void DFS(int nNum, int n);
+	void RepairOpenMeshHole(MyMesh & mesh);
 
 
 #pragma endregion algorithm_method
@@ -640,6 +659,7 @@ public:
 	afx_msg void OnGenerateBorderLine();
 	afx_msg void OnGenerateConnectFaces();
 	afx_msg void OnGenerateMaximumConnectBorderLines();
+	afx_msg void OnDeleteRegion();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const

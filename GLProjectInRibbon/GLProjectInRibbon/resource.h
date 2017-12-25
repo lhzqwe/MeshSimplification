@@ -48,6 +48,7 @@
 #define ID_BUTTON5                      32779
 #define ID_BUTTON6                      32780
 #define ID_DELETESIMP                   32781
+#define ID_DELETE                       32781
 #define ID_SERIALIZE_WRITE              32782
 #define ID_SERIALIZE_READ               32783
 #define ID_QUADRICSIMP                  32784
@@ -56,6 +57,7 @@
 #define ID_GENERATE_BORDR_LINE          32787
 #define ID_GENERATE_CONNECT_FACES       32788
 #define ID_GENERATE_MAXIMUM_CONNECT_REGIONS 32789
+#define ID_DELETE_REGION                32790
 
 // Next default values for new objects
 // 
