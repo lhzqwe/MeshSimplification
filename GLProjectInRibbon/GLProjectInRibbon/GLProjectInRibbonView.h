@@ -415,6 +415,13 @@ public:
 		std::map<MyMesh::FaceHandle,
 		bool>
 		&mp);
+	void RefineRegionSpread(MyMesh & mesh,
+		OpenMesh::EPropHandleT<int>& edgeStatus,
+		MyMesh::FaceHandle &fh,
+		std::map<MyMesh::FaceHandle,
+		bool>
+		&mp,
+		set<MyMesh::HalfedgeHandle> &he_handles);
 	void GraphBFS(std::map < BorderPoint, GraphNode, BorderPoint>& mp,
 		BorderPoint & startPoint,
 		ConnectRegion & newRegion);
@@ -437,6 +444,15 @@ public:
 	int vNum_;
 	void DFS(int nNum, int n);
 	void RepairOpenMeshHole(MyMesh & mesh);
+	struct RefineRegion
+	{
+		set<MyMesh::FaceHandle> faces;
+		set<MyMesh::HalfedgeHandle> boundarys;
+	};
+	vector<RefineRegion> refine_regions_;
+
+	void RefineMesh(MyMesh & mesh);
+	void RefineTheRegion(MyMesh & mesh, RefineRegion& region);
 
 
 #pragma endregion algorithm_method

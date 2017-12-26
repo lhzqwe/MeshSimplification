@@ -2622,6 +2622,36 @@ void CGLProjectInRibbonView::RegionSpread(MyMesh & mesh,
 	}
 }
 
+void CGLProjectInRibbonView::RefineRegionSpread(MyMesh & mesh,
+	OpenMesh::EPropHandleT<int>& edgeStatus,
+	MyMesh::FaceHandle &fh,
+	std::map<MyMesh::FaceHandle, bool> &mp,
+	set<MyMesh::HalfedgeHandle> &he_handles)
+{
+	if (mp.count(fh) > 0) return;
+
+	mp.insert(std::make_pair(fh, true));
+
+	MyMesh::FaceHalfedgeIter fhe_it = mesh.fh_iter(fh);
+
+	while (fhe_it.is_valid())
+	{
+		MyMesh::HalfedgeHandle heh = *fhe_it;
+		MyMesh::EdgeHandle eh = mesh.edge_handle(heh);
+		if (mesh.property(edgeStatus, eh) == DELETING)
+		{
+			mesh.property(edgeStatus, eh) = DELETED;
+			MyMesh::FaceHandle fhNew = mesh.opposite_face_handle(heh);
+			RefineRegionSpread(mesh, edgeStatus, fhNew, mp, he_handles);
+		}
+		else if (mesh.property(edgeStatus, eh) == UNDETERMINED)
+		{
+			he_handles.insert(heh);
+		}
+		++fhe_it;
+	}
+}
+
 void CGLProjectInRibbonView::GraphBFS(std::map < BorderPoint, GraphNode, BorderPoint>& mp,
 								   BorderPoint & startPoint, 
 								   ConnectRegion & newRegion)
@@ -2911,6 +2941,263 @@ void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
 	cout << "Repair " << num_hole <<  " hole finished ..." << endl;
 }
 
+void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
+{
+	if (mesh.n_vertices() == 0 || mesh.n_faces() == 0)
+	{
+		cout << "Refine mesh is not valid ..." << endl;
+		return;
+	}
+
+	OpenMesh::IO::Options opt;
+	//add property
+	//normal property
+	if (!opt.check(OpenMesh::IO::Options::FaceNormal))
+	{
+		mesh.request_face_normals();
+		mesh.update_normals();
+	}
+
+	//dihedral angle
+	OpenMesh::EPropHandleT<float> dihedralAngle;
+	mesh.add_property(dihedralAngle);
+
+	//Edge status 
+	OpenMesh::EPropHandleT<int> status;
+	mesh.add_property(status);
+
+	//平面表面区域边界提取及分割
+	//计算每一条边相邻面的二面角
+	DeletingEdgeArray deletingEdges;
+	UnDeterminedEdgeArray undeterminedEdges;
+
+	float fi = 0.1f;
+	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
+		e_it != mesh.edges_end(); ++e_it)
+	{
+		float f = mesh.calc_dihedral_angle_fast(*e_it);
+		float degree = glm::degrees(f);
+		mesh.property(dihedralAngle, *e_it) = degree;
+		if (std::abs(degree) < fi)
+		{
+			mesh.property(status, *e_it) = DELETING;
+			deletingEdges.push_back(std::make_pair(*e_it, true));
+		}
+		else
+		{
+			mesh.property(status, *e_it) = UNDETERMINED;
+			undeterminedEdges.push_back(std::make_pair(*e_it, true));
+		}
+	}
+
+	//生成平面区域
+	for (unsigned int i = 0; i < deletingEdges.size(); ++i)
+	{
+		std::map<MyMesh::FaceHandle, bool> mp;
+		set<MyMesh::HalfedgeHandle> he_handles;
+		if (mesh.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
+		{
+			mp.clear();
+			RefineRegion newRegion;
+			auto adjacentfh = mesh.face_handle(mesh.halfedge_handle(deletingEdges[i].first, 0));
+			RefineRegionSpread(mesh, status, adjacentfh, mp, he_handles);
+			for (const auto & i : mp)
+			{
+				newRegion.faces.insert(i.first);
+			}
+			for (const auto & i : he_handles)
+			{
+				newRegion.boundarys.insert(i);
+			}
+			refine_regions_.push_back(newRegion);
+		}
+	}
+
+	int num_refine_region = 0;
+	for (auto & region : refine_regions_)
+	{
+		if (region.faces.size() > region.boundarys.size() - 2)
+		{
+			cout << "Refine region " << num_refine_region << "..." << endl;
+			RefineTheRegion(result_mesh_, region);
+			++num_refine_region;
+		}
+	}
+}
+
+void CGLProjectInRibbonView::RefineTheRegion(MyMesh & mesh, RefineRegion& region)
+{
+	result_mesh_.request_face_status();
+	result_mesh_.request_edge_status();
+	result_mesh_.request_vertex_status();
+
+	for (auto & fh : region.faces)
+	{
+		mesh.delete_face(fh, true);
+	}
+
+	//假定只有一条边界，且边界首尾相连
+	from_vertex_.clear();
+	to_vertex_.clear();
+	from_temp_.clear();
+	to_temp_.clear();
+	fromV_.clear();
+	toV_.clear();
+
+	vector<MyMesh::VertexHandle> AddedFace;
+	int i, edge_num = 0;
+
+	for (auto & he : region.boundarys)
+	{
+		from_vertex_[edge_num] = mesh.from_vertex_handle(he);
+		to_vertex_[edge_num] = mesh.to_vertex_handle(he);
+		++edge_num;
+	}
+
+	if (edge_num == 0) return;
+	vis_.resize(edge_num);
+	fill(vis_.begin(), vis_.end(), false);
+	
+	int num_hole = 0;
+
+	typedef unsigned int uint;
+	for (uint k = 0; k < vis_.size(); ++k)
+	{
+		if (vis_[k] == true) continue;
+
+		++num_hole;
+
+		from_temp_.clear();
+		to_temp_.clear();
+		fromV_.clear();
+		toV_.clear();
+
+		from_temp_[0] = from_vertex_[k];
+		to_temp_[0] = to_vertex_[k];
+
+		vis_[k] = true;
+		vNum_ = 10001;
+		DFS(1, edge_num);
+
+		double sum = 0.0f;
+		for (int j = 0; j < vNum_; ++j)
+		{
+			auto s = mesh.point(fromV_[j]);
+			auto e = mesh.point(toV_[j]);
+			sum += glm::length(glm::vec3(s[0] - e[0], s[1] - e[1], s[2] - e[2]));
+		}
+		double avg_len = sum / vNum_;
+
+		while (vNum_ > 3)
+		{
+			double min_ang = 360;
+			int pos = 0, nxt;
+			MyMesh::VertexHandle vVertex0, vVertex1, vVertex2;
+			for (i = 0; i < vNum_; ++i)
+			{
+				nxt = (i + 1) % vNum_;
+
+				auto s1 = mesh.point(fromV_[i]);
+				auto e1 = mesh.point(toV_[i]);
+
+				auto s2 = mesh.point(fromV_[nxt]);
+				auto e2 = mesh.point(toV_[nxt]);
+
+				MyMesh::Normal v1(s1.data()[0] - e1.data()[0], s1.data()[1] - e1.data()[1], s1.data()[2] - e1.data()[2]);
+				MyMesh::Normal v2(e2.data()[0] - s2.data()[0], e2.data()[1] - s2.data()[1], e2.data()[2] - s2.data()[2]);
+
+				MyMesh::HalfedgeHandle minPointHaleAge;
+				for (MyMesh::HalfedgeIter itx = mesh.halfedges_begin(); itx != mesh.halfedges_end(); ++itx)
+				{
+					MyMesh::HalfedgeHandle tmp = *itx;
+					if (mesh.from_vertex_handle(tmp) == fromV_[i] && mesh.to_vertex_handle(tmp) == toV_[i])
+					{
+						minPointHaleAge = tmp;
+						break;
+					}
+				}
+
+				double angle = mesh.calc_sector_angle(minPointHaleAge);
+				if (angle < min_ang)
+				{
+					min_ang = angle;
+					pos = i;
+					vVertex0 = fromV_[i];
+					vVertex1 = toV_[i];
+					vVertex2 = toV_[nxt];
+				}
+			}
+
+			MyMesh::Point p0 = mesh.point(vVertex0);
+			MyMesh::Point p1 = mesh.point(vVertex1);
+			MyMesh::Point p2 = mesh.point(vVertex2);
+			double dis = glm::length(glm::vec3(p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]));
+
+			if (dis > 2 * avg_len)
+			{
+				MyMesh::Point newPoint((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2, (p0[2] + p2[2]) / 2);
+				MyMesh::VertexHandle newVertexHandle = mesh.add_vertex(newPoint);
+				toV_[pos] = newVertexHandle;
+				fromV_[(pos + 1) & vNum_] = newVertexHandle;
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(newVertexHandle);
+				mesh.add_face(AddedFace);
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				AddedFace.push_back(newVertexHandle);
+				mesh.add_face(AddedFace);
+
+			}
+			else
+			{
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				mesh.add_face(AddedFace);
+
+				toV_[pos] = toV_[(pos + 1) % vNum_];
+				if (pos + 1 == vNum_)
+				{
+					pos = -1;
+				}
+
+				for (i = pos + 1; i < vNum_ - 1; ++i)
+				{
+					fromV_[i] = fromV_[i + 1];
+					toV_[i] = toV_[i + 1];
+				}
+
+				--vNum_;
+
+			}
+		}
+
+		if (vNum_ <= 3)
+		{
+			if (vNum_ != 0)
+			{
+				MyMesh::VertexHandle vVertex0 = fromV_[0];
+				MyMesh::VertexHandle vVertex1 = fromV_[1];
+				MyMesh::VertexHandle vVertex2 = fromV_[2];
+
+				AddedFace.clear();
+				AddedFace.push_back(vVertex0);
+				AddedFace.push_back(vVertex1);
+				AddedFace.push_back(vVertex2);
+				mesh.add_face(AddedFace);
+			}
+		}
+	}
+
+	mesh.garbage_collection();
+}
+
 void CGLProjectInRibbonView::ContourLineBasedMethod()
 {
 	OpenMesh::IO::Options opt;
@@ -3077,6 +3364,11 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	cout << "Mesh information after simplified : " 
 	<< "vertices : " << result_mesh_.n_vertices() << " "
 	<< "faces : " << result_mesh_.n_faces() << endl;
+
+	cout << "Mesh refine starting ..." << endl;
+	RefineMesh(result_mesh_);
+	cout << "Mesh after refine : " << "v : " << result_mesh_.n_vertices() 
+		<< " f : " << result_mesh_.n_faces() << endl;
 
 
 	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
