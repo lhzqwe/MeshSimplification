@@ -28,10 +28,12 @@ struct Vertex
 	Vertex() {};
 	Vertex(glm::vec3 position, 
 		glm::vec3 normal = glm::vec3(0.0f, 0.0f, 0.0f), 
-		glm::vec2 tex_coords = glm::vec2(0.0f, 0.0f)) :
+		glm::vec2 tex_coords = glm::vec2(0.0f, 0.0f),
+		glm::vec3 barycentric = glm::vec3(0.0f, 0.0f, 0.0f)) :
 		Position(position),
 		Normal(normal),
-		TexCoords(tex_coords)
+		TexCoords(tex_coords),
+		Barycentric(barycentric)
 	{};
 
 	Vertex(glm::vec3 & position, glm::vec3 & normal, glm::vec2 & texCoords) :
@@ -44,6 +46,8 @@ struct Vertex
 	glm::vec3 Normal;
 	//TexCoords
 	glm::vec2 TexCoords;
+	//Barycentric
+	glm::vec3 Barycentric;
 };
 
 struct Texture

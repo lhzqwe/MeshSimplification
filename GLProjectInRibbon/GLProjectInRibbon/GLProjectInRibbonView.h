@@ -553,6 +553,7 @@ private:
 	Shader* line_shader_;
 	Shader* region_shader_;
 	Shader* text_shader_;
+	Shader* mesh_line_mode_shader_;
 	Model* model_;
 	string model_name_;
 	Camera* camera_;
@@ -649,6 +650,15 @@ private:
 	bool ifDrawConnectBorderLines;
 
 	MeshGpuManager default_gm_;
+
+public:
+	static void CALLBACK DebugCallback(unsigned int source, unsigned int type,
+		unsigned int id, unsigned int severity,
+		int length, const char* message, void* userParam);
+
+	static void DebugOutputToFile(
+		unsigned int source, unsigned int type, unsigned int id,
+		unsigned int severity, const char* message);
 
 public :
 	

@@ -349,6 +349,11 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	// asked for, try to get the next best thing.  i.e. 16-bit color mode
 	// instead of 24-bit color mode.
 	int pixelFormat = ChoosePixelFormat(dc.m_hDC, &pfd);
+	if (pixelFormat == 0)
+	{
+		cout << "OpenGL context inited failed ..." << endl;
+		return -1;
+	}
 
 	// Set the pixel format to the best pixel format I can get (see above)
 	// and if that operation fails, bring up a message box that tells the
@@ -360,10 +365,47 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	}
 	// Creates an OpenGL rendering context so that OpenGL knows how to draw
 	// to this view. You can't use OpenGL in MFC without using the handle
-	// that this function returns
-	m_hRC = wglCreateContext(dc.m_hDC);
+	// that this function returns	
+	HGLRC tempContext = wglCreateContext(dc.m_hDC);
 
-	wglMakeCurrent(dc.m_hDC, m_hRC);
+	wglMakeCurrent(dc.m_hDC, tempContext);
+
+	const GLubyte* name = glGetString(GL_VENDOR);
+	const GLubyte* renderer = glGetString(GL_RENDERER);
+	const GLubyte* gl_version = glGetString(GL_VERSION);
+	const GLubyte* glu_version = gluGetString(GLU_VERSION);
+
+	cout << "OpenGL manufacturer: " << name << endl;
+	cout << "Renderer name: " << renderer << endl;
+	cout << "OpenGL version: " << gl_version << endl;
+	cout << "GLU version: " << glu_version << endl;
+
+	int major, minor;
+	glGetIntegerv(GL_MAJOR_VERSION, &major);
+	glGetIntegerv(GL_MINOR_VERSION, &minor);
+
+	int attribs[] =
+	{
+		WGL_CONTEXT_MAJOR_VERSION_ARB, major,
+		WGL_CONTEXT_MINOR_VERSION_ARB, minor,
+		WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB |
+		WGL_CONTEXT_DEBUG_BIT_ARB,
+		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+		0
+	};
+	PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+	wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)
+		wglGetProcAddress("wglCreateContextAttribsARB");
+	if (wglCreateContextAttribsARB != NULL)
+		m_hRC = wglCreateContextAttribsARB(dc.m_hDC, 0, attribs);
+	if (!m_hRC)
+		m_hRC = tempContext;
+	else
+	{
+		wglMakeCurrent(dc.m_hDC, m_hRC);
+		wglDeleteContext(tempContext);
+	}
+
 	// Initialize GLEW to setup the OpenGL Function pointers
 	glewExperimental = GL_TRUE;
 	GLenum err = glewInit();
@@ -390,7 +432,7 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	camera_ = nullptr;
 
 	cout << "Init shader ..." << endl;
-	shader_ = new Shader("Shader/normal.vert", "Shader/normal.frag");
+	shader_ = new Shader("Shader/mesh_line_mode.vert", "Shader/mesh_line_mode.frag");
 	if (shader_ == nullptr) cout << "shader_ " << "init failed..." << endl;
 	else cout << "shader_ " << "init success ..." << endl;
 
@@ -406,6 +448,10 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	region_shader_ = new Shader("Shader/region.vert", "Shader/region.frag");
 	if (region_shader_ == nullptr) cout << "region_shader_ " << "init failed..." << endl;
 	else cout << "region_shader_ " << "init success..." << endl;
+
+	mesh_line_mode_shader_ = new Shader("Shader/mesh_line_mode.vert", "Shader/mesh_line_mode.frag");
+	if (mesh_line_mode_shader_ == nullptr) cout << "mesh_line_mode_shader_ " << "init failed..." << endl;
+	else cout << "mesh_line_mode_shader_ " << "init success ..." << endl;
 
 	camera_ = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 	if (camera_ == nullptr) cout << "Camera " << "init failed..." << endl;
@@ -444,6 +490,22 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	ifDrawConnectBorderLines = false;
 	// New codes end.
 	// //////////////////////////////////////////////////////////////
+
+	//OpenGl extensions
+	/*int NumberOfExtensions;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &NumberOfExtensions);
+	for (int i = 0; i < NumberOfExtensions; ++i)
+	{
+	const GLubyte *ccc = glGetStringi(GL_EXTENSIONS, i);
+	if (strcmp((const char*)ccc, "GL_ARB_debug_output") == 0)
+	{
+	glDebugMessageCallbackARB = (PFNGLDEBUGMESSAGECALLBACKARBPROC)wglGetProcAddress("glDebugMessageCallbackARB");
+	}
+	}*/
+
+	glDebugMessageCallbackARB((GLDEBUGPROCARB)DebugCallback, NULL);
+
+	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
 
 	return 0;
 }
@@ -489,12 +551,17 @@ void CGLProjectInRibbonView::OnDestroy()
 		text_shader_ = nullptr;
 	}
 
+	if (mesh_line_mode_shader_ != nullptr)
+	{
+		delete mesh_line_mode_shader_;
+		mesh_line_mode_shader_ = nullptr;
+	}
+
 	if (model_ != nullptr)
 	{
 		delete model_;
 		model_ = nullptr;
 	}
-
 
 	if (camera_ != nullptr)
 	{
@@ -1127,8 +1194,11 @@ Mesh CGLProjectInRibbonView::GenerateFlatMesh(MyMesh & mesh)
 			n = glm::cross(v2.Position - v1.Position, v3.Position - v2.Position);
 
 			v1.Normal = n;
+			v1.Barycentric = glm::vec3(1.0f, 0.0f, 0.0f);
 			v2.Normal = n;
+			v2.Barycentric = glm::vec3(0.0f, 1.0f, 0.0f);
 			v3.Normal = n;
+			v3.Barycentric = glm::vec3(0.0f, 0.0f, 1.0f);
 
 			result.vertices.push_back(v1);
 			result.vertices.push_back(v2);
@@ -3876,4 +3946,58 @@ void CGLProjectInRibbonView::OnDeleteRegion()
 
 	SetDrawingMode(DrawType(DrawType::DELETE_REGION));
 	Invalidate();
+}
+
+void CGLProjectInRibbonView::DebugOutputToFile(
+	unsigned int source, unsigned int type, unsigned int id,
+	unsigned int severity, const char* message)
+{
+	FILE* f;
+	f = fopen("ShaderDebug.txt", "w");
+	if (f)
+	{
+		char debSource[16], debType[20], debSev[10];
+		if (source == GL_DEBUG_SOURCE_API_ARB)
+			strcpy(debSource, "OpenGL");
+		else if (source == GL_DEBUG_SOURCE_WINDOW_SYSTEM_ARB)
+			strcpy(debSource, "Windows");
+		else if (source == GL_DEBUG_SOURCE_SHADER_COMPILER_ARB)
+			strcpy(debSource, "Shader Compiler");
+		else if (source == GL_DEBUG_SOURCE_THIRD_PARTY_ARB)
+			strcpy(debSource, "Third Party");
+		else if (source == GL_DEBUG_SOURCE_APPLICATION_ARB)
+			strcpy(debSource, "Application");
+		else if (source == GL_DEBUG_SOURCE_OTHER_ARB)
+			strcpy(debSource, "Other");
+		if (type == GL_DEBUG_TYPE_ERROR_ARB)
+			strcpy(debType, "Error");
+		else if (type == GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_ARB)
+			strcpy(debType, "Deprecated behavior");
+		else if (type == GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR_ARB)
+			strcpy(debType, "Undefined behavior");
+		else if (type == GL_DEBUG_TYPE_PORTABILITY_ARB)
+			strcpy(debType, "Portability");
+		else if (type == GL_DEBUG_TYPE_PERFORMANCE_ARB)
+			strcpy(debType, "Performance");
+		else if (type == GL_DEBUG_TYPE_OTHER_ARB)
+			strcpy(debType, "Other");
+		if (severity == GL_DEBUG_SEVERITY_HIGH_ARB)
+			strcpy(debSev, "High");
+		else if (severity == GL_DEBUG_SEVERITY_MEDIUM_ARB)
+			strcpy(debSev, "Medium");
+		else if (severity == GL_DEBUG_SEVERITY_LOW_ARB)
+			strcpy(debSev, "Low");
+		else 
+			strcpy(debSev, "Ignored");
+		fprintf(f, "Source:%s\tType:%s\tID:%d\tSeverity:%s\tMessage:%s\n",
+			debSource, debType, id, debSev, message);
+		fclose(f);
+	}
+}
+
+void CGLProjectInRibbonView::DebugCallback(unsigned int source, unsigned int type, unsigned int id,
+	unsigned int severity, int length,
+	const char* message, void* userParam)
+{
+	DebugOutputToFile(source, type, id, severity, message);
 }

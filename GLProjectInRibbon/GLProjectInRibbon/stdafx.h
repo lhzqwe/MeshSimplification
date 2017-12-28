@@ -47,6 +47,8 @@
 #define GLEW_STATIC 1
 #include <glew.h>
 
+#include <wglew.h>
+
 
 
 
