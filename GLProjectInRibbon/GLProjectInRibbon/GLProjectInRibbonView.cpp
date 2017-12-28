@@ -86,6 +86,8 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_GENERATE_CONNECT_FACES, &CGLProjectInRibbonView::OnGenerateConnectFaces)
 	ON_COMMAND(ID_GENERATE_MAXIMUM_CONNECT_REGIONS, &CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines)
 	ON_COMMAND(ID_DELETE_REGION, &CGLProjectInRibbonView::OnDeleteRegion)
+	ON_COMMAND(ID_DELETEDMESH, &CGLProjectInRibbonView::OnDeletedMesh)
+	ON_COMMAND(ID_HOLEFILLING, &CGLProjectInRibbonView::OnHoleFilling)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -125,7 +127,7 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 	InitDirectionLighting();
 
 	//DrawModel();
-
+	      
 	/*if (ifDrawBorderLine) DrawLine(5.0f, 1.0f, 0.0, 0.0f);
 	if (ifDrawRegions) DrawRegions(regionPs_gm_);
 	if (ifDrawConnectBorderLines) DrawConnectBorderLine(5.0f);*/
@@ -146,6 +148,12 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 		break;
 	case DrawType::DELETE_REGION :
 		DrawRegions(regionPs_gm_);
+		break;
+	case DrawType::AFTER_DELETE_MESH:
+		DrawModel();
+		break;
+	case DrawType::AFTER_REFINE_MESH:
+		DrawModel();
 		break;
 	default:
 		break;
@@ -1388,6 +1396,14 @@ void CGLProjectInRibbonView::DrawMesh(int drawMode)
 	else if (drawMode == DRAW_SIMPLIFIEDMESH)
 	{
 		DrawMesh(simplified_mesh_);
+	}
+	else if (drawMode == DRAW_AFTER_DELETE)
+	{
+		DrawMesh(after_delete_mesh_);
+	}
+	else if (drawMode == DRAW_AFTER_REFINE)
+	{
+		DrawMesh(after_refine_mesh_);
 	}
 }
 
@@ -3268,6 +3284,25 @@ void CGLProjectInRibbonView::RefineTheRegion(MyMesh & mesh, RefineRegion& region
 	mesh.garbage_collection();
 }
 
+void CGLProjectInRibbonView::GetAfterDeleteMesh(MyMesh & mesh)
+{
+	mesh = mesh_;
+
+	mesh.request_face_status();
+	mesh.request_edge_status();
+	mesh.request_vertex_status();
+
+	for (unsigned int i = 0; i < regionPs_.size(); ++i)
+	{
+		if (regionPs_[i].isDeleted)
+		{
+			for (auto & fh : regionPs_[i].faces)
+				mesh.delete_face(fh, true);
+		}
+	}
+	mesh.garbage_collection();
+}
+
 void CGLProjectInRibbonView::ContourLineBasedMethod()
 {
 	OpenMesh::IO::Options opt;
@@ -3428,6 +3463,8 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	cout << "Deleted 2 connect regions..." << endl;
 
 	DeleteMyMesh(mesh_, connectBorderLines_, border_line_segments_, regionPs_);
+
+
 
 	RepairOpenMeshHole(result_mesh_);
 
@@ -4000,4 +4037,53 @@ void CGLProjectInRibbonView::DebugCallback(unsigned int source, unsigned int typ
 	const char* message, void* userParam)
 {
 	DebugOutputToFile(source, type, id, severity, message);
+}
+
+
+void CGLProjectInRibbonView::OnDeletedMesh()
+{
+	// TODO:  在此添加命令处理程序代码
+	if (mesh_.n_vertices() == 0 || mesh_.n_faces() == 0)
+	{
+		MessageBox(_T("请重新执行算法！"));
+		return;
+	}
+	if (after_delete_mesh_.is_empty())
+	{
+		MyMesh result_mesh;
+		GetAfterDeleteMesh(result_mesh);
+		after_delete_mesh_ = GenerateFlatMesh(result_mesh);
+	}
+
+	// TODO:  在此添加命令处理程序代码
+	SetupMesh(after_delete_mesh_);
+	AdjustCameraView(after_delete_mesh_);
+	SetDrawingMode(DRAW_AFTER_DELETE);
+	SetDrawingMode(DrawType(DrawType::AFTER_DELETE_MESH));
+
+	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnHoleFilling()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Hole filling ..." << endl;
+	if (result_mesh_.n_vertices() == 0 || result_mesh_.n_faces() == 0)
+	{
+		MessageBox(_T("请重新执行算法！"));
+		return;
+	}
+	if (after_refine_mesh_.is_empty())
+	{
+		after_refine_mesh_ = GenerateFlatMesh(result_mesh_);
+	}
+
+	// TODO:  在此添加命令处理程序代码
+	SetupMesh(after_refine_mesh_);
+	AdjustCameraView(after_refine_mesh_);
+	SetDrawingMode(DRAW_AFTER_REFINE);
+	SetDrawingMode(DrawType(DrawType::AFTER_REFINE_MESH));
+
+	Invalidate();
 }

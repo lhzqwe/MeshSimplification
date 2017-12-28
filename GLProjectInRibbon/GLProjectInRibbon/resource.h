@@ -58,6 +58,8 @@
 #define ID_GENERATE_CONNECT_FACES       32788
 #define ID_GENERATE_MAXIMUM_CONNECT_REGIONS 32789
 #define ID_DELETE_REGION                32790
+#define ID_DELETEDMESH                  32791
+#define ID_HOLEFILLING                  32792
 
 // Next default values for new objects
 // 

@@ -71,6 +71,7 @@ public:
 
 	//Mesh Simplification Operator
 	bool deleted;
+	bool isSetup;
 
 	/* Functions */
 	//Constructor
@@ -84,6 +85,8 @@ public:
 	void SetDelete();
 	void SetExist();
 	void RefreshGpuData();
+	void reset();
+	bool is_empty();
 
 	bool isDeleted();
 

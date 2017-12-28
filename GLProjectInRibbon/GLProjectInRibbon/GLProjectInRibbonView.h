@@ -61,6 +61,8 @@
 #define DRAW_SIMPLIFIEDMESH 3
 #define DRAW_FLAT 4
 #define DRAW_SMOOTH 5
+#define DRAW_AFTER_DELETE 6
+#define DRAW_AFTER_REFINE 7
 
 #define FLOAT_MAX 1000000000000.0f
 
@@ -171,7 +173,9 @@ enum class DrawType{
 	REGION,
 	BORDER_LINE_SEGMENT,
 	CONNECT_BORDER_LINE_SEGMENT,
-	DELETE_REGION
+	DELETE_REGION,
+	AFTER_DELETE_MESH,
+	AFTER_REFINE_MESH
 };
 
 class CGLProjectInRibbonView : public CView
@@ -453,6 +457,7 @@ public:
 
 	void RefineMesh(MyMesh & mesh);
 	void RefineTheRegion(MyMesh & mesh, RefineRegion& region);
+	void GetAfterDeleteMesh(MyMesh & mesh);
 
 
 #pragma endregion algorithm_method
@@ -620,6 +625,8 @@ private:
 	Mesh combined_mesh_;
 
 	Mesh normal_mesh_;
+	Mesh after_delete_mesh_;
+	Mesh after_refine_mesh_;
 	vector<Mesh> mesh_list_; //For Segmentation
 	Mesh simplified_mesh_;
 
@@ -650,6 +657,8 @@ private:
 	bool ifDrawConnectBorderLines;
 
 	MeshGpuManager default_gm_;
+
+
 
 public:
 	static void CALLBACK DebugCallback(unsigned int source, unsigned int type,
@@ -686,6 +695,8 @@ public:
 	afx_msg void OnGenerateConnectFaces();
 	afx_msg void OnGenerateMaximumConnectBorderLines();
 	afx_msg void OnDeleteRegion();
+	afx_msg void OnDeletedMesh();
+	afx_msg void OnHoleFilling();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const

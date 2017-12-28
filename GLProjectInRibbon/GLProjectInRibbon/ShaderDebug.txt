@@ -1,1 +1,1 @@
-Source:OpenGL	Type:Other	ID:131185	Severity:Ignored	Message:Buffer detailed info: Buffer object 3 (bound to GL_ELEMENT_ARRAY_BUFFER_ARB, usage hint is GL_STATIC_DRAW) will use VIDEO memory as the source for buffer object operations.
+Source:OpenGL	Type:Other	ID:131185	Severity:Ignored	Message:Buffer detailed info: Buffer object 11 (bound to GL_ELEMENT_ARRAY_BUFFER_ARB, usage hint is GL_STATIC_DRAW) will use VIDEO memory as the source for buffer object operations.
