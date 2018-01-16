@@ -30,6 +30,10 @@
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/Count_stop_predicate.h>
 #include <CGAL/Surface_mesh_simplification/Policies/Edge_collapse/LindstromTurk_cost.h>
 
+#include <CGAL/Constrained_Delaunay_triangulation_2.h>
+#include <CGAL/Triangulation_face_base_with_info_2.h>
+#include <CGAL/Polygon_2.h>
+
 // GLM Mathemtics
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
@@ -199,6 +203,25 @@ class CGLProjectInRibbonView : public CView
 	typedef CGAL::Simple_cartesian<double> SimpKernel;
 	typedef SimpKernel::Point_3 Point_3;
 	typedef CGAL::Polyhedron_3<SimpKernel> Surface_mesh;
+
+	//New Add...
+	struct FaceInfo2
+	{
+		FaceInfo2(){}
+		int nesting_level;
+		bool in_domain(){
+			return nesting_level % 2 == 1;
+		}
+	};
+	typedef CGAL::Exact_predicates_inexact_constructions_kernel       K;
+	typedef CGAL::Triangulation_vertex_base_2<K>                      Vb;
+	typedef CGAL::Triangulation_face_base_with_info_2<FaceInfo2, K>    Fbb;
+	typedef CGAL::Constrained_triangulation_face_base_2<K, Fbb>        Fb;
+	typedef CGAL::Triangulation_data_structure_2<Vb, Fb>               TDS;
+	typedef CGAL::Exact_predicates_tag                                Itag;
+	typedef CGAL::Constrained_Delaunay_triangulation_2<K, TDS, Itag>  CDT;
+	typedef CDT::Point                                                Point_CDT;
+	typedef CGAL::Polygon_2<K>                                        Polygon_2;
 
 #pragma region New_Algorithm
 
@@ -448,6 +471,7 @@ public:
 	int vNum_;
 	void DFS(int nNum, int n);
 	void RepairOpenMeshHole(MyMesh & mesh);
+	void RepairOpenMeshHoleTest(MyMesh & mesh);
 	struct RefineRegion
 	{
 		set<MyMesh::FaceHandle> faces;
@@ -457,7 +481,29 @@ public:
 
 	void RefineMesh(MyMesh & mesh);
 	void RefineTheRegion(MyMesh & mesh, RefineRegion& region);
+	void DeleteTheRegion(MyMesh & mesh, RefineRegion& region);
 	void GetAfterDeleteMesh(MyMesh & mesh);
+
+	struct BorderLoop{
+		typedef int idx;
+		vector<idx> vertices_idx;
+	};
+
+	struct RefineLoopRegion{
+		vector<MyMesh::VertexHandle> vertices;
+		vector<BorderLoop> border_loops;
+	};
+
+	RefineLoopRegion refine_loop_region_;
+
+	void GetRefineLoopRegion(RefineRegion & region, MyMesh & mesh);
+
+	void mark_domains(CDT& ct,
+		CDT::Face_handle start,
+		int index,
+		std::list<CDT::Edge>& border);
+
+	void mark_domains(CDT& cdt);
 
 
 #pragma endregion algorithm_method

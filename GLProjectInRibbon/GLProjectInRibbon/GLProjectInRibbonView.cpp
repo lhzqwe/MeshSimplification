@@ -21,6 +21,7 @@
 
 #include "GLProjectInRibbonDoc.h"
 #include "GLProjectInRibbonView.h"
+#include "HoleFiller.h"
 
 // ////////////////////////////////////////////////////////////////
 // New codes begin:
@@ -2764,22 +2765,31 @@ void CGLProjectInRibbonView::DeletedRegionAnalysis(std::vector<ConnectRegion> & 
 {
 	for (auto & r : cr)
 	{
-		float meanLength = 0.0f;
+		float max_length = 0.0f;
 		int n = 0;
 		for (auto iter = r.blss.begin(); iter != r.blss.end(); ++iter, ++n)
 		{
-			meanLength += borderLineSegments[*iter].length;
+			max_length = std::max(borderLineSegments[*iter].length, max_length);
 		}
-		meanLength /= n;
-		r.meanLength = meanLength;
+		r.meanLength = max_length;
 	}
 
 	sort(cr.begin(), cr.end(), [](const ConnectRegion& lhs, const ConnectRegion& rhs){
 		return lhs.meanLength < rhs.meanLength;
 	});
 
-	cr[0].isDeleted = true;
-	cr[1].isDeleted = true;
+	int delete_sum = 0;
+
+	for (auto & region : cr)
+	{
+		if (region.meanLength < 10.0f)
+		{
+			region.isDeleted = true;
+			++delete_sum;
+		}
+	}
+
+	cout << "Deleting " << delete_sum << " regions..." << endl;
 }
 
 void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
@@ -2850,6 +2860,10 @@ void CGLProjectInRibbonView::DFS(int nNum, int n)
 		{
 			from_temp_[nNum] = from_vertex_[i];
 			to_temp_[nNum] = to_vertex_[i];
+			if (from_temp_[nNum] == to_temp_[nNum])
+			{
+				cout << "Error" << endl;
+			}
 			vis_[i] = true;
 			DFS(nNum + 1, n);
 		}
@@ -2879,6 +2893,15 @@ void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
 			++edge_num;
 		}
 	}
+
+	for (int i = 0; i < edge_num; ++i)
+	{
+		if (from_vertex_[i] == to_vertex_[i])
+		{
+			cout << "error" << endl;
+		}
+	}
+
 
 	if (edge_num == 0) return;
 	vis_.resize(edge_num);
@@ -2921,7 +2944,7 @@ void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
 			double min_ang = 360;
 			int pos = 0, nxt;
 			MyMesh::VertexHandle vVertex0, vVertex1, vVertex2;
-			for (i = 0; i < vNum_; ++i)
+			for (int i = 0; i < vNum_; ++i)
 			{
 				nxt = (i + 1) % vNum_;
 
@@ -2966,7 +2989,7 @@ void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
 				MyMesh::Point newPoint((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2, (p0[2] + p2[2]) / 2);
 				MyMesh::VertexHandle newVertexHandle = mesh.add_vertex(newPoint);
 				toV_[pos] = newVertexHandle;
-				fromV_[(pos + 1) & vNum_] = newVertexHandle;
+				fromV_[(pos + 1) % vNum_] = newVertexHandle;
 
 				AddedFace.clear();
 				AddedFace.push_back(vVertex0);
@@ -3027,6 +3050,13 @@ void CGLProjectInRibbonView::RepairOpenMeshHole(MyMesh & mesh)
 	cout << "Repair " << num_hole <<  " hole finished ..." << endl;
 }
 
+void CGLProjectInRibbonView::RepairOpenMeshHoleTest(MyMesh & mesh)
+{
+	HoleFiller<MyMesh> hf(mesh);
+
+	hf.fill_all_holes(2);
+}
+
 void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
 {
 	if (mesh.n_vertices() == 0 || mesh.n_faces() == 0)
@@ -3057,7 +3087,7 @@ void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
 	DeletingEdgeArray deletingEdges;
 	UnDeterminedEdgeArray undeterminedEdges;
 
-	float fi = 0.1f;
+	float fi = 10.0f;
 	for (MyMesh::EdgeIter e_it = mesh.edges_begin();
 		e_it != mesh.edges_end(); ++e_it)
 	{
@@ -3076,14 +3106,15 @@ void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
 		}
 	}
 
+	std::map<MyMesh::FaceHandle, bool> mp;
+	set<MyMesh::HalfedgeHandle> he_handles;
 	//生成平面区域
 	for (unsigned int i = 0; i < deletingEdges.size(); ++i)
-	{
-		std::map<MyMesh::FaceHandle, bool> mp;
-		set<MyMesh::HalfedgeHandle> he_handles;
+	{	
 		if (mesh.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
 		{
 			mp.clear();
+			he_handles.clear();
 			RefineRegion newRegion;
 			auto adjacentfh = mesh.face_handle(mesh.halfedge_handle(deletingEdges[i].first, 0));
 			RefineRegionSpread(mesh, status, adjacentfh, mp, he_handles);
@@ -3098,17 +3129,47 @@ void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
 			refine_regions_.push_back(newRegion);
 		}
 	}
-
 	int num_refine_region = 0;
+
+	sort(refine_regions_.begin(), refine_regions_.end(), [](const RefineRegion &lhs, const RefineRegion & rhs) {
+		int l = (int)(lhs.faces.size()) - (int)(lhs.boundarys.size());
+		int r = (int)(rhs.faces.size()) - (int)(rhs.boundarys.size());
+		return l > r;
+	});
+
+	int tmp_i = -1;
+
 	for (auto & region : refine_regions_)
 	{
-		if (region.faces.size() > region.boundarys.size() - 2)
+		++tmp_i;
+
+		//if (tmp_i == 0 || tmp_i == 1)
+		//{
+		//	cout << "Delete region " << num_refine_region << "..." << endl;
+		//	//RefineTheRegion(result_mesh_, region);
+		//	cout << "Boundary size is : " << region.boundarys.size() << endl;
+		//	DeleteTheRegion(mesh, region);
+		//	++num_refine_region;
+		//}
+		//tmp_i == 0 || 1 || 2
+		int b = static_cast<int>(region.boundarys.size());
+		int f = static_cast<int>(region.faces.size());
+		cout << "tmp_i : " << tmp_i << " f - b : " << f - b << endl;
+		if (f - b >= 18)
 		{
-			cout << "Refine region " << num_refine_region << "..." << endl;
-			RefineTheRegion(result_mesh_, region);
+			cout << "Delete region " << num_refine_region << "..." << endl;
+			//RefineTheRegion(result_mesh_, region);
+			cout << "Boundary size is : " << region.boundarys.size() << endl;
+			DeleteTheRegion(mesh, region);
+			GetRefineLoopRegion(region, mesh);
 			++num_refine_region;
 		}
 	}
+
+	mesh.garbage_collection();
+	//RepairOpenMeshHoleTest(mesh);
+
+	cout << "Refine " << num_refine_region << " " << "regions..." << endl;
 }
 
 void CGLProjectInRibbonView::RefineTheRegion(MyMesh & mesh, RefineRegion& region)
@@ -3224,7 +3285,7 @@ void CGLProjectInRibbonView::RefineTheRegion(MyMesh & mesh, RefineRegion& region
 				MyMesh::Point newPoint((p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2, (p0[2] + p2[2]) / 2);
 				MyMesh::VertexHandle newVertexHandle = mesh.add_vertex(newPoint);
 				toV_[pos] = newVertexHandle;
-				fromV_[(pos + 1) & vNum_] = newVertexHandle;
+				fromV_[(pos + 1) % vNum_] = newVertexHandle;
 
 				AddedFace.clear();
 				AddedFace.push_back(vVertex0);
@@ -3284,6 +3345,14 @@ void CGLProjectInRibbonView::RefineTheRegion(MyMesh & mesh, RefineRegion& region
 	mesh.garbage_collection();
 }
 
+void CGLProjectInRibbonView::DeleteTheRegion(MyMesh & mesh, RefineRegion& region)
+{
+	for (auto & m : region.faces)
+	{
+		mesh.delete_face(m);
+	}
+}
+
 void CGLProjectInRibbonView::GetAfterDeleteMesh(MyMesh & mesh)
 {
 	mesh = mesh_;
@@ -3301,6 +3370,227 @@ void CGLProjectInRibbonView::GetAfterDeleteMesh(MyMesh & mesh)
 		}
 	}
 	mesh.garbage_collection();
+}
+
+void CGLProjectInRibbonView::GetRefineLoopRegion(RefineRegion & region, MyMesh & mesh)
+{
+	refine_loop_region_.vertices.clear();
+	refine_loop_region_.border_loops.clear();
+
+	set<MyMesh::VertexHandle> vh;
+
+	map<MyMesh::VertexHandle, MyMesh::HalfedgeHandle> v_he;
+
+	for (const auto & heh : region.boundarys)
+	{
+		vh.insert(mesh.from_vertex_handle(heh));
+		vh.insert(mesh.to_vertex_handle(heh));
+
+		v_he.insert({ mesh.from_vertex_handle(heh), heh });
+	}
+
+	assert(v_he.size() == region.boundarys.size());
+
+	typedef int idx;
+	map<MyMesh::VertexHandle, idx> v_idx;
+
+	int i = 0;
+	for (const auto & v : vh)
+	{
+		refine_loop_region_.vertices.push_back(v);
+		v_idx.insert({ v, i });
+		++i;
+	}
+
+
+	map<MyMesh::HalfedgeHandle, bool> used_map;
+	for (const auto & heh : region.boundarys)
+	{
+		if (used_map.count(heh) > 0) continue;
+
+		MyMesh::VertexHandle v_from = mesh.from_vertex_handle(heh);
+		MyMesh::VertexHandle v_to = mesh.to_vertex_handle(heh);
+
+		MyMesh::VertexHandle f = v_from, t = v_to;
+		MyMesh::HalfedgeHandle heh;
+		
+		BorderLoop newBL;
+		while (t != v_from)
+		{
+			heh = v_he[f];
+			used_map[heh] = true;
+			newBL.vertices_idx.push_back(v_idx[f]);
+			t = mesh.to_vertex_handle(heh);
+			f = t;
+		}
+
+		refine_loop_region_.border_loops.push_back(newBL);
+	}
+
+	cout << "Refine loop region consists " << refine_loop_region_.border_loops.size() << " loops..." << endl;
+	
+	//Points same line check ...
+	auto & bls = refine_loop_region_.border_loops;
+	auto & verts = refine_loop_region_.vertices;
+
+	bls.erase(
+		remove_if(
+		bls.begin(), 
+		bls.end(),
+		[&](const BorderLoop & bl){
+		int check = false;
+		auto & point1 = mesh.point(verts[bl.vertices_idx[0]]);
+		auto & point2 = mesh.point(verts[bl.vertices_idx[1]]);
+		float k = (point2[1] - point1[1]) / (point2[0] - point1[0]);
+		for (int i = 2; i < bl.vertices_idx.size(); ++i)
+		{
+			auto & point = mesh.point(verts[bl.vertices_idx[i]]);
+			float k_tmp = (point[1] - point1[1]) / (point[0] - point1[0]);
+			if (abs(k_tmp - k) <= 0.0000001)
+			{
+				check = true;
+				break;
+			}
+		}
+
+		if (check == true)
+		{
+			for (auto & v_idx : bl.vertices_idx)
+			{
+				mesh.delete_vertex(verts[v_idx]);
+			}
+		}
+
+		return check;
+	}),
+		bls.end());
+	
+	for (int i = 0; i < refine_loop_region_.border_loops.size(); ++i)
+	{
+		cout << "Loop " << i + 1 << " : " << endl;
+		for (auto & j : refine_loop_region_.border_loops[i].vertices_idx)
+		{
+			cout << j << " ";
+		}
+		cout << endl;
+	}
+
+	//points are in CCW order
+
+	vector<Polygon_2> polygons;
+	map<pair<float, float>, idx> mp;
+	auto & vhs = refine_loop_region_.vertices;
+	MyMesh::VertexHandle vhtmp;
+	int loop_index = 0;
+	for (const auto & bl : refine_loop_region_.border_loops)
+	{
+		cout << "loop " << loop_index << " points : " << endl;
+		Polygon_2 pg2;
+		for (const auto & vindex : bl.vertices_idx)
+		{
+			auto & point = mesh.point(vhs[vindex]);	
+			pg2.push_back(Point_CDT(point[0], point[1]));
+			mp[{(float)(point[0]), (float)(point[1])}] = vindex;
+			cout << point[0] << "  " << point[1] << endl;
+		}
+		polygons.push_back(pg2);
+	}
+
+	CDT cdt;
+	for (auto & pg : polygons)
+	{
+		cdt.insert_constraint(pg.vertices_begin(), pg.vertices_end(), true);
+	}
+
+	mark_domains(cdt);
+
+	typedef MyMesh::VertexHandle MeshVertexHandle;
+	typedef CDT::Vertex CGALVertex;
+	typedef CDT::Vertex::Point CGALPoint;
+	typedef MyMesh::Point MeshPoint;
+	typedef CDT::Geom_traits::FT CGAL_FT;
+	typedef std::array<CGAL_FT, 2> PointArray;
+
+	PointArray key;
+	std::map<PointArray, MeshVertexHandle> points_map;
+	std::vector<MeshVertexHandle> face_vhandles;
+	CGALVertex v;
+	MeshPoint p;
+	MeshVertexHandle p_h;
+
+	cout << "After retriangulated ..." << endl;
+	int count = 0;
+	int invalid_num = 0;
+	for (CDT::Finite_faces_iterator fit = cdt.finite_faces_begin();
+		fit != cdt.finite_faces_end(); ++fit)
+	{
+		if (fit->info().in_domain())
+		{
+			++count;
+
+			cout << "Facets " << count << " : " << endl;
+			for (int i = 0; i < 3; ++i)
+			{
+				v = *(fit->vertex(i));
+				auto & point = v.point();
+				cout << point.x() << " " << point.y() << endl;
+				cout << "vertice idx : " << mp[{(float)(point.x()), (float)(point.y())}] << endl;
+				auto & vh = refine_loop_region_.vertices[mp[{(float)(point.x()), (float)(point.y())}]];
+				cout << "vertex handle : " << vh << endl;
+				face_vhandles.push_back(vh);
+			}
+			auto fh = mesh.add_face(face_vhandles[0], face_vhandles[2], face_vhandles[1]);
+			if (!fh.is_valid())
+			{
+				cout << "Face is not valid ..." << endl;
+				invalid_num++;
+			}
+			face_vhandles.clear();
+		}
+	}
+	cout << invalid_num << "Faces are invalid..." << endl;
+	cout << count << " facets are in domain..." << endl;
+}
+
+void CGLProjectInRibbonView::mark_domains(CDT& ct, CDT::Face_handle start, int index, std::list<CDT::Edge>& border)
+{
+	if (start->info().nesting_level != -1){
+		return;
+	}
+	std::list<CDT::Face_handle> queue;
+	queue.push_back(start);
+	while (!queue.empty()){
+		CDT::Face_handle fh = queue.front();
+		queue.pop_front();
+		if (fh->info().nesting_level == -1){
+			fh->info().nesting_level = index;
+			for (int i = 0; i < 3; i++){
+				CDT::Edge e(fh, i);
+				CDT::Face_handle n = fh->neighbor(i);
+				if (n->info().nesting_level == -1){
+					if (ct.is_constrained(e)) border.push_back(e);
+					else queue.push_back(n);
+				}
+			}
+		}
+	}
+}
+
+void CGLProjectInRibbonView::mark_domains(CDT& cdt)
+{
+	for (CDT::All_faces_iterator it = cdt.all_faces_begin(); it != cdt.all_faces_end(); ++it){
+		it->info().nesting_level = -1;
+	}
+	std::list<CDT::Edge> border;
+	mark_domains(cdt, cdt.infinite_face(), 0, border);
+	while (!border.empty()){
+		CDT::Edge e = border.front();
+		border.pop_front();
+		CDT::Face_handle n = e.first->neighbor(e.second);
+		if (n->info().nesting_level == -1){
+			mark_domains(cdt, n, e.first->info().nesting_level + 1, border);
+		}
+	}
 }
 
 void CGLProjectInRibbonView::ContourLineBasedMethod()
@@ -3330,13 +3620,26 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	DeletingEdgeArray deletingEdges;
 	UnDeterminedEdgeArray undeterminedEdges;
 
-	float fi = 0.1f;
+	float fi = 10.0f;
+	map<float, int> mp;
 	for (MyMesh::EdgeIter e_it = mesh_.edges_begin();
 		e_it != mesh_.edges_end(); ++e_it)
 	{
+		if (mesh_.is_boundary(*e_it)) cout << "Detect a boundary ..." << endl;
+
 		float f = mesh_.calc_dihedral_angle_fast(*e_it);
 		float degree = glm::degrees(f);
 		mesh_.property(dihedralAngle, *e_it) = degree;
+		
+		if (mp.count(std::abs(degree)) > 0)
+		{
+			mp[std::abs(degree)] ++;
+		}
+		else
+		{
+			mp[std::abs(degree)] = 0;
+		}
+
 		if (std::abs(degree) < fi)
 		{
 			mesh_.property(status, *e_it) = DELETING;
@@ -3347,6 +3650,11 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 			mesh_.property(status, *e_it) = UNDETERMINED;
 			undeterminedEdges.push_back(std::make_pair(*e_it, true));
 		}
+	}
+
+	for (const auto & j : mp)
+	{
+		cout << j.first << "    " << j.second << endl;
 	}
 
 	//生成平面区域
@@ -3460,27 +3768,36 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 
 	DeletedRegionAnalysis(connectBorderLines_, borderPointAdjGraph, border_line_segments_);
 
-	cout << "Deleted 2 connect regions..." << endl;
-
 	DeleteMyMesh(mesh_, connectBorderLines_, border_line_segments_, regionPs_);
 
+	if (!OpenMesh::IO::write_mesh(result_mesh_, "result_mesh_.off"))
+	{
+		cout << "Writing to result_mesh_.off failed..." << endl;
+		return;
+	}
 
+	//RepairOpenMeshHole(result_mesh_);
+	RepairOpenMeshHoleTest(result_mesh_);
 
-	RepairOpenMeshHole(result_mesh_);
-
-	cout << "Mesh information after simplified : " 
+	cout << "Mesh information after simplified : "
 	<< "vertices : " << result_mesh_.n_vertices() << " "
 	<< "faces : " << result_mesh_.n_faces() << endl;
 
+	if (!OpenMesh::IO::write_mesh(result_mesh_, "result_repair_hole.off"))
+	{
+		cout << "Writing to result_repair_hole.off failed..." << endl;
+	}
+
+
 	cout << "Mesh refine starting ..." << endl;
 	RefineMesh(result_mesh_);
-	cout << "Mesh after refine : " << "v : " << result_mesh_.n_vertices() 
+	cout << "Mesh after refine : " << "v : " << result_mesh_.n_vertices()
 		<< " f : " << result_mesh_.n_faces() << endl;
 
 
 	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
 	{
-		cout << "Writing to result.off failed..." << endl;
+	cout << "Writing to result.off failed..." << endl;
 	}
 
 	cout << "Writing to result.off completed..." << endl;
