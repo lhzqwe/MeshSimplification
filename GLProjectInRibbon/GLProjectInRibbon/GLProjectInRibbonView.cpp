@@ -89,6 +89,8 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_DELETE_REGION, &CGLProjectInRibbonView::OnDeleteRegion)
 	ON_COMMAND(ID_DELETEDMESH, &CGLProjectInRibbonView::OnDeletedMesh)
 	ON_COMMAND(ID_HOLEFILLING, &CGLProjectInRibbonView::OnHoleFilling)
+	ON_COMMAND(ID_LOD_NORMAL, &CGLProjectInRibbonView::OnLodNormal)
+	ON_COMMAND(ID_LOD_LOD, &CGLProjectInRibbonView::OnLodLod)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -155,6 +157,9 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 		break;
 	case DrawType::AFTER_REFINE_MESH:
 		DrawModel();
+		break;
+	case DrawType::LOD_DISPLAY:
+		DrawLODMode();
 		break;
 	default:
 		break;
@@ -243,6 +248,7 @@ void CGLProjectInRibbonView::OnOpenButton()
 	CString filter = L"文件 (*.obj)|*.obj||";   //文件过虑的类型  
 	CFileDialog openFileDlg(isOpen, defaultDir, fileName, OFN_HIDEREADONLY | OFN_READONLY, filter, NULL);
 	openFileDlg.GetOFN().lpstrInitialDir = L"D:\\MyProject\\MyOpenGL\\OBJ";
+	//openFileDlg.DoModal();
 	INT_PTR result = openFileDlg.DoModal();
 	CString filePath = defaultDir + "\\SWD4-8FRF-10.obj";
 	if (result == IDOK) {
@@ -1254,11 +1260,14 @@ int CGLProjectInRibbonView::GenerateUniqueColorList(int count, vector<Color>& pC
 		Color(255, 255, 255)
 	};
 
-	for (i = 0; i < sizeof(slValues) / sizeof(slValues[0]); ++i)
+	unsigned int limitsN = sizeof(slValues) / sizeof(slValues[0]);
+	unsigned int colorN = sizeof(baseColors) / sizeof(baseColors[0]);
+
+	for (i = 0; i < limitsN; ++i)
 	{
-		for (j = 0; j < sizeof(slValues) / sizeof(slValues[0]); ++j)
+		for (j = 0; j < limitsN; ++j)
 		{
-			for (k = 0; k < sizeof(baseColors) / sizeof(baseColors[0]); ++k)
+			for (k = 0; k < colorN; ++k)
 			{
 				int newColor[3];
 				int maxValue;
@@ -2695,14 +2704,25 @@ void CGLProjectInRibbonView::RegionSpread(MyMesh & mesh,
 
 	MyMesh::FaceHalfedgeIter fhe_it = mesh.fh_iter(fh);
 
-	while (fhe_it.is_valid())
+	while (fhe_it.is_valid() && fhe_it)
 	{
 		MyMesh::HalfedgeHandle heh = *fhe_it;
 		MyMesh::EdgeHandle eh = mesh.edge_handle(heh);
+		if (!mesh.is_valid_handle(eh))
+		{
+			cout << "Edge is not a valid handle ..." << endl;
+			assert(false);
+		}
 		if (mesh.property(edgeStatus, eh) == DELETING)
 		{
 			mesh.property(edgeStatus, eh) = DELETED;
+			if (mesh.is_boundary(eh)) continue;
 			MyMesh::FaceHandle fhNew = mesh.opposite_face_handle(heh);
+			if (!mesh.is_valid_handle(fhNew))
+			{
+				cout << "Opposite new face handle is not valid ..." << endl;
+				assert(false);
+			}
 			RegionSpread(mesh, edgeStatus, fhNew, mp);
 		}
 		++fhe_it;
@@ -2774,11 +2794,32 @@ void CGLProjectInRibbonView::DeletedRegionAnalysis(std::vector<ConnectRegion> & 
 		r.meanLength = max_length;
 	}
 
+	/*for (auto & r : cr)
+	{
+	float max_length = 0.0f;
+	for (auto iter = r.blss.begin(); iter != r.blss.end(); ++iter)
+	{
+	max_length += borderLineSegments[*iter].length;
+	}
+	r.meanLength = max_length;
+	}*/
+
 	sort(cr.begin(), cr.end(), [](const ConnectRegion& lhs, const ConnectRegion& rhs){
 		return lhs.meanLength < rhs.meanLength;
 	});
 
 	int delete_sum = 0;
+
+	/*float dQ = 0.995;
+
+	for (int i = 0; i < static_cast<int>(cr.size() * dQ); ++i)
+	{
+		cr[i].isDeleted = true;
+		cout << "Mean length : " << cr[i].meanLength << endl;
+		++delete_sum;
+	}*/
+
+	cout << "Connect regions num is : " << cr.size() << endl;
 
 	for (auto & region : cr)
 	{
@@ -2835,6 +2876,32 @@ void CGLProjectInRibbonView::DeleteMyMesh(MyMesh & mesh,
 		}
 	}
 	result_mesh_.garbage_collection();
+}
+
+void CGLProjectInRibbonView::RefineIsolatedTriangles(MyMesh & mesh)
+{
+	assert(mesh.n_vertices() != 0);
+	
+	for (MyMesh::FaceIter f_it = mesh.faces_begin(); f_it != mesh.faces_end(); ++f_it)
+	{
+		auto fe_it = mesh.fe_iter(*f_it);
+
+		int boundaryNum = 0;
+		while (fe_it)
+		{
+			if (mesh.is_boundary(*fe_it))
+			{
+				++boundaryNum;
+			}
+			++fe_it;
+		}
+		if (boundaryNum == 2 || boundaryNum == 3)
+		{
+			mesh.delete_face(*f_it, true);
+		}
+	}
+	
+	mesh.garbage_collection();
 }
 
 void CGLProjectInRibbonView::DFS(int nNum, int n)
@@ -3054,7 +3121,7 @@ void CGLProjectInRibbonView::RepairOpenMeshHoleTest(MyMesh & mesh)
 {
 	HoleFiller<MyMesh> hf(mesh);
 
-	hf.fill_all_holes(2);
+	hf.fill_all_holes(1);
 }
 
 void CGLProjectInRibbonView::RefineMesh(MyMesh & mesh)
@@ -3625,8 +3692,10 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 	for (MyMesh::EdgeIter e_it = mesh_.edges_begin();
 		e_it != mesh_.edges_end(); ++e_it)
 	{
-		if (mesh_.is_boundary(*e_it)) cout << "Detect a boundary ..." << endl;
+		if (mesh_.is_boundary(*e_it)) 
+			cout << "Detect a boundary ..." << endl;
 
+		//boundary's D angle is 0, tagged with DELETING
 		float f = mesh_.calc_dihedral_angle_fast(*e_it);
 		float degree = glm::degrees(f);
 		mesh_.property(dihedralAngle, *e_it) = degree;
@@ -3652,22 +3721,27 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		}
 	}
 
-	for (const auto & j : mp)
+	/*for (const auto & j : mp)
 	{
-		cout << j.first << "    " << j.second << endl;
-	}
+	cout << j.first << "    " << j.second << endl;
+	}*/
 
 	//生成平面区域
+	std::map<MyMesh::FaceHandle, bool> mp_fb;
 	for (unsigned int i = 0; i < deletingEdges.size(); ++i)
 	{
-		std::map<MyMesh::FaceHandle, bool> mp;
 		if (mesh_.property(status, deletingEdges[i].first) == DELETING) //边状态为待删除
 		{
-			mp.clear();
+			mp_fb.clear();
 			Region newRegion;
 			auto adjacentfh = mesh_.face_handle(mesh_.halfedge_handle(deletingEdges[i].first, 0));
-			RegionSpread(mesh_, status, adjacentfh, mp);
-			for (const auto & i : mp)
+			if (!mesh_.is_valid_handle(adjacentfh))
+			{
+				cout << "Adjacent face handle is not valid!" << endl;
+				assert(false);
+			}
+			RegionSpread(mesh_, status, adjacentfh, mp_fb);
+			for (const auto & i : mp_fb)
 			{
 				newRegion.faces.push_back(i.first);
 			}
@@ -3681,7 +3755,7 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		for (unsigned int j = 0; j < regionPs_[i].faces.size(); ++j)
 		{
 			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs_[i].faces[j]);
-			while (fe_iter.is_valid())
+			while (fe_iter.is_valid() && fe_iter)
 			{
 				if (mesh_.property(status, *fe_iter) == UNDETERMINED)
 				{
@@ -3707,7 +3781,7 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		for (unsigned int j = 0; j < regionPs_[i].faces.size(); ++j)
 		{
 			MyMesh::FaceEdgeIter fe_iter = mesh_.fe_iter(regionPs_[i].faces[j]);
-			while (fe_iter.is_valid())
+			while (fe_iter.is_valid() && fe_iter)
 			{
 				if (mesh_.property(status, *fe_iter) == BORDER)
 				{
@@ -3734,14 +3808,14 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		}
 	}
 
-	cout << "Border line segments : " << endl;
+	/*cout << "Border line segments : " << endl;
 	for (unsigned int i = 0; i < border_line_segments_.size(); ++i)
 	{
 		const auto & bls = border_line_segments_[i];
 		cout << "(" << bls.A.x << ", " << bls.A.y << ", " << bls.A.z << ")"
 			<< " --> "
 			<< "(" << bls.B.x << ", " << bls.B.y << ", " << bls.B.z << ")" << endl;
-	}
+	}*/
 
 	cout << "Extracting " << border_line_segments_.size() << " border line segments..." << endl;
 
@@ -3770,24 +3844,55 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 
 	DeleteMyMesh(mesh_, connectBorderLines_, border_line_segments_, regionPs_);
 
+	RefineIsolatedTriangles(result_mesh_);
+
 	if (!OpenMesh::IO::write_mesh(result_mesh_, "result_mesh_.off"))
 	{
 		cout << "Writing to result_mesh_.off failed..." << endl;
 		return;
 	}
 
+	cout << "Writing to result_mesh_.off success ..." << endl;
+
 	//RepairOpenMeshHole(result_mesh_);
 	RepairOpenMeshHoleTest(result_mesh_);
 
 	cout << "Mesh information after simplified : "
-	<< "vertices : " << result_mesh_.n_vertices() << " "
-	<< "faces : " << result_mesh_.n_faces() << endl;
+		<< "vertices : " << result_mesh_.n_vertices() << " "
+		<< "faces : " << result_mesh_.n_faces() << endl;
 
 	if (!OpenMesh::IO::write_mesh(result_mesh_, "result_repair_hole.off"))
 	{
 		cout << "Writing to result_repair_hole.off failed..." << endl;
 	}
 
+	cout << "Writing to result_repair_hole.off success ..." << endl;
+
+	////Decimation Refine ...
+	//float decimation_ratio = 0.5f;
+	//int num_target_vertices = mesh_.n_vertices() * decimation_ratio;
+	//int num_target_faces = mesh_.n_faces() * decimation_ratio;
+
+	//Decimater decimater(result_mesh_);
+	//HModQuadric hModQuadric;
+	//HModEdgeLength hModEdgeLength;
+
+	//decimater.add(hModQuadric);
+	//decimater.add(hModEdgeLength);
+
+	//decimater.module(hModQuadric).unset_max_err();
+	//decimater.module(hModEdgeLength).set_edge_length(10.0f);
+	//decimater.initialize();
+
+	//decimater.decimate_to_faces(num_target_vertices, num_target_faces);
+
+	//result_mesh_.garbage_collection();
+
+	//if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
+	//{
+	//	cout << "Write error ..." << endl;
+	//	return;
+	//}
 
 	cout << "Mesh refine starting ..." << endl;
 	RefineMesh(result_mesh_);
@@ -3795,9 +3900,9 @@ void CGLProjectInRibbonView::ContourLineBasedMethod()
 		<< " f : " << result_mesh_.n_faces() << endl;
 
 
-	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.off"))
+	if (!OpenMesh::IO::write_mesh(result_mesh_, "result.obj"))
 	{
-	cout << "Writing to result.off failed..." << endl;
+		cout << "Writing to result.off failed..." << endl;
 	}
 
 	cout << "Writing to result.off completed..." << endl;
@@ -3889,11 +3994,14 @@ void CGLProjectInRibbonView::OnGenerateConnectFaces()
 	gpu::Point gp1, gp2, gp3;
 	glm::vec3 glm_p1, glm_p2, glm_p3;
 	glm::vec3 n;
+
+	unsigned int colorSize = colorList.size();
+
 	for (unsigned int i = 0; i < regionPs_.size(); ++i)
 	{
 		gpu::Region new_region;
 		auto & region = regionPs_[i];
-		Color & color = colorList[i];
+		Color & color = colorList[i % colorSize];
 
 		regionPs_[i].set_color(color.R, color.G, color.B);
 
@@ -3963,6 +4071,8 @@ void CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines()
 	vector<Color> excludedColor = { Color(0.0, 0.0, 0.0) };
 	GenerateUniqueColorList(connectBorderLines_.size(), colorList, excludedColor);
 
+	unsigned int colorSize = colorList.size();
+
 	for (unsigned int i = 0; i < connectBorderLines_.size(); ++i)
 	{
 		for (auto & blsIdx : connectBorderLines_[i].blss)
@@ -3971,7 +4081,7 @@ void CGLProjectInRibbonView::OnGenerateMaximumConnectBorderLines()
 			gpu::Edge new_edge(
 				gpu::Point(bls.A.x, bls.A.y, bls.A.z),
 				gpu::Point(bls.B.x, bls.B.y, bls.B.z));
-			auto & color = colorList[i];
+			auto & color = colorList[i % colorSize];
 			new_edge.set_color(color.R, color.G, color.B);
 			connectBorderLines_gpu_.push_back(new_edge);
 		}
@@ -4403,4 +4513,217 @@ void CGLProjectInRibbonView::OnHoleFilling()
 	SetDrawingMode(DrawType(DrawType::AFTER_REFINE_MESH));
 
 	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnLodNormal()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Lod normal ..." << endl;
+
+	LoadLodMeshes();
+	GenerateLodScene(10);
+	AdjustLodCamera();
+	SetDrawingMode(DrawType(DrawType::LOD_DISPLAY));
+
+	Invalidate();
+}
+
+
+void CGLProjectInRibbonView::OnLodLod()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Lod lod ..." << endl;
+}
+
+void CGLProjectInRibbonView::LoadLodMeshes()
+{
+	if (!lod_scene_.meshes.empty())
+	{
+		cout << "LOD meshes already exists ..." << endl;
+		return;
+	}
+
+	MyMesh helper_mesh;
+	string mesh_file = "D:\\MeshSimplification\\GLProjectInRibbon\\GLProjectInRibbon\\LOD\\2\\SWD4-8FRF-lod";
+	if (!OpenMesh::IO::read_mesh(helper_mesh, string(mesh_file + "1.obj").c_str()))
+	{
+		cout << "Read lod 1 mesh file failed..." << endl;
+		return;
+	}
+	cout << "Read lod 1 mesh completed ..." << endl;
+	cout << "Lod 1 : " << "vertices." << helper_mesh.n_vertices() << " faces." << helper_mesh.n_faces() << endl;
+
+	Mesh mesh_lod1 = GenerateFlatMesh(helper_mesh);
+	lod_scene_.meshes.push_back(mesh_lod1);
+
+	helper_mesh.clean();
+
+	if (!OpenMesh::IO::read_mesh(helper_mesh, string(mesh_file + "2.obj").c_str()))
+	{
+		cout << "Read lod 2 mesh file failed..." << endl;
+		return;
+	}
+	cout << "Read lod 2 mesh completed ..." << endl;
+	cout << "Lod 2 : " << "vertices." << helper_mesh.n_vertices() << " faces." << helper_mesh.n_faces() << endl;
+
+	Mesh mesh_lod2 = GenerateFlatMesh(helper_mesh);
+	lod_scene_.meshes.push_back(mesh_lod2);
+
+	helper_mesh.clean();
+
+	if (!OpenMesh::IO::read_mesh(helper_mesh, string(mesh_file + "3.obj").c_str()))
+	{
+		cout << "Read lod 3 mesh file failed..." << endl;
+		return;
+	}
+	cout << "Read lod 3 mesh completed ..." << endl;
+	cout << "Lod 3 : " << "vertices." << helper_mesh.n_vertices() << " faces." << helper_mesh.n_faces() << endl;
+
+	Mesh mesh_lod3 = GenerateFlatMesh(helper_mesh);
+	lod_scene_.meshes.push_back(mesh_lod3);
+
+	//Transport meshes to GPU ...
+	for (auto & mesh : lod_scene_.meshes)
+	{
+		SetupMesh(mesh);
+	}
+
+	cout << "Transport meshes to gpu completed ..." << endl;
+}
+
+void CGLProjectInRibbonView::GenerateLodScene(int num_mesh)
+{
+	if (lod_scene_.meshes.empty())
+	{
+		cout << "Lod meshes is empty ..." << endl;
+		return;
+	}
+
+	float xmin, ymin, zmin;
+	xmin = ymin = zmin = 10000000000.0f;
+	float xmax, ymax, zmax;
+	xmax = ymax = zmax = -100000000000.0f;
+
+	Mesh & mesh = lod_scene_.meshes[0];
+
+	for (const auto & point : mesh.vertices)
+	{
+		xmin = std::min(xmin, point.Position.x);
+		ymin = std::min(ymin, point.Position.y);
+		zmin = std::min(zmin, point.Position.z);
+
+		xmax = std::max(xmax, point.Position.x);
+		ymax = std::max(ymax, point.Position.y);
+		zmax = std::max(zmax, point.Position.z);
+	}
+
+	lod_scene_.center_point.x = xmin + 0.5f * (xmax - xmin);
+	lod_scene_.center_point.y = ymin + 0.5f * (ymax - ymin);
+	lod_scene_.center_point.z = zmin + 0.5f * (zmax - zmin);
+
+	lod_scene_.num_mesh = num_mesh;
+	lod_scene_.mesh_length = glm::vec3(xmax - xmin, ymax - ymin, zmax - zmin);
+
+	float delta_x = (xmax - xmin) * 1.5f;
+	float delta_y = (ymax - ymin) * 1.5f;
+
+	glm::vec3 init_vec(0.0f, 0.0f, 0.0f);
+	for (int i = 0; i < num_mesh; ++i)
+	{
+		for (int j = 0; j < num_mesh; ++j)
+		{
+			lod_scene_.meshes_map.push_back(
+			{
+				glm::vec3(
+				init_vec.x + i * delta_x,
+				init_vec.y + j * delta_y,
+				0.0f), 
+				0 });
+		}
+	}
+}
+
+void CGLProjectInRibbonView::MeshesLodDetermination(glm::vec3 camera_pos)
+{
+	float lod1_distance = 100.0f;
+	float lod2_distance = 500.0f;
+
+	for (auto & mesh : lod_scene_.meshes_map)
+	{
+		auto & pos = mesh.first;
+		auto & lod = mesh.second;
+
+		float distance = glm::distance(pos, camera_pos);
+
+		if (distance < lod1_distance)
+		{
+			lod = 0;
+		}
+		else if (distance < lod2_distance)
+		{
+			lod = 1;
+		}
+		else
+		{
+			lod = 2;
+		}
+	}
+}
+
+void CGLProjectInRibbonView::AdjustLodCamera()
+{
+	glm::vec3 camera_target_pos;
+
+	float delta_x = lod_scene_.mesh_length.x * 1.5f;
+	float delta_y = lod_scene_.mesh_length.y * 1.5f;
+
+	camera_target_pos.x = delta_x * lod_scene_.num_mesh * 0.5f;
+	camera_target_pos.y = 0.0f;
+	camera_target_pos.z = 200.0f;
+
+	camera_->SetPosition(camera_target_pos.x, camera_target_pos.y, camera_target_pos.z);
+	
+	glm::vec3 scene_center_point;
+	scene_center_point.x = lod_scene_.num_mesh * 0.5f * delta_x;
+	scene_center_point.y = lod_scene_.num_mesh * 0.5f * delta_y;
+	scene_center_point.z = 0.0f;
+
+	glm::vec3 up_direction = glm::vec3(0.0f, 0.0f, 1.0f);
+	glm::vec3 front_direction = glm::normalize(scene_center_point - camera_->Position);
+	glm::vec3 right_direction = glm::cross(front_direction, up_direction);
+	up_direction = glm::normalize(glm::cross(right_direction, front_direction));
+
+	camera_->SetFront(front_direction.x, front_direction.y, front_direction.z);
+	camera_->SetUp(up_direction.x, up_direction.y, up_direction.z);
+
+	matrix_projection_ = glm::perspective(45.0f, (float)num_screen_width_ / (float)num_screen_height_, 10.0f, 2000.0f);
+}
+
+void CGLProjectInRibbonView::DrawLODMode()
+{
+	shader_->Use();
+	// Transformation matrices
+	matrix_view_ = camera_->GetViewMatrix();
+	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
+	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(matrix_view_));
+	// Draw the loaded model
+
+	for (auto & mesh : lod_scene_.meshes_map)
+	{
+		auto & pos = mesh.first;
+		auto & lod = mesh.second;
+
+		matrix_model_ = glm::mat4(1.0);
+		//no rotation
+		//matrix_model_ = matrix_rotation_;
+		matrix_model_ = glm::translate(matrix_model_, pos);
+		matrix_model_ = glm::scale(matrix_model_, glm::vec3(num_model_scale_));
+		matrix_model_ = glm::translate(matrix_model_, glm::vec3(-lod_scene_.center_point.x, -lod_scene_.center_point.y, -lod_scene_.center_point.z));
+		glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
+
+		Color normalColor(1.0f, 1.0f, 1.0f);
+		InitMaterial(normalColor, *shader_);
+		lod_scene_.meshes[lod].Draw(*shader_);
+	}
 }

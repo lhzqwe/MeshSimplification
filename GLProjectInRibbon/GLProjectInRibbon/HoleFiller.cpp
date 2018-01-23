@@ -109,7 +109,7 @@ HoleFiller< MeshT >::fill_all_holes(int _stages)
 		if (mesh_.is_boundary(*i))
 		{
 			++cnt;
-			std::cerr << "Filling hole " << cnt << "\n";
+			std::cout << "Filling hole " << cnt << "\n";
 			fill_hole(*i, _stages);
 		}
 

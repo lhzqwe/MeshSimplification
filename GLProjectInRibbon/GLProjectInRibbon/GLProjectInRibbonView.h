@@ -45,6 +45,9 @@
 //OpenMesh
 #include <OpenMesh/Core/IO/MeshIO.hh>
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+#include <OpenMesh/Tools/Decimater/DecimaterT.hh>
+#include <OpenMesh/Tools/Decimater/ModQuadricT.hh>
+#include <OpenMesh/Tools/Decimater/ModEdgeLengthT.hh>
 
 // GL includes
 #include "Shader.h"
@@ -179,7 +182,8 @@ enum class DrawType{
 	CONNECT_BORDER_LINE_SEGMENT,
 	DELETE_REGION,
 	AFTER_DELETE_MESH,
-	AFTER_REFINE_MESH
+	AFTER_REFINE_MESH,
+	LOD_DISPLAY
 };
 
 class CGLProjectInRibbonView : public CView
@@ -226,6 +230,9 @@ class CGLProjectInRibbonView : public CView
 #pragma region New_Algorithm
 
 	typedef OpenMesh::TriMesh_ArrayKernelT<> MyMesh;
+	typedef OpenMesh::Decimater::DecimaterT<MyMesh> Decimater;
+	typedef OpenMesh::Decimater::ModQuadricT<MyMesh>::Handle HModQuadric;
+	typedef OpenMesh::Decimater::ModEdgeLengthT<MyMesh>::Handle HModEdgeLength;
 
 	typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> DeletingEdgeArray;
 	typedef std::vector<std::pair<MyMesh::EdgeHandle, bool>> UnDeterminedEdgeArray;
@@ -460,7 +467,9 @@ public:
 		std::vector<ConnectRegion> & cr,
 		std::vector<BorderLineSegment> &borderLineSegments,
 		std::vector<Region>& regionPs);
+	void RefineIsolatedTriangles(MyMesh & mesh);
 	void ContourLineBasedMethod();
+
 	map<int, MyMesh::VertexHandle> from_vertex_;
 	map<int, MyMesh::VertexHandle> to_vertex_;
 	map<int, MyMesh::VertexHandle> from_temp_;
@@ -732,6 +741,25 @@ public :
 	string infile_name_;
 	// Operations
 #pragma endregion data
+
+public:
+	struct LodScene {
+		vector<Mesh> meshes; //Lod meshes from file ...
+		typedef int lod; // 0 : meshes[0] ...
+		vector<pair<glm::vec3, lod>> meshes_map; // different meshes location generated from transport matrix
+		glm::vec3 center_point;
+		glm::vec3 mesh_length;
+		int num_mesh; // single direction mesh num
+	};
+
+	LodScene lod_scene_;
+
+	void LoadLodMeshes();
+	void GenerateLodScene(int num_mesh);
+	void MeshesLodDetermination(glm::vec3 camera_pos);
+	void AdjustLodCamera();
+	void DrawLODMode();
+
 protected:
 		CGLProjectInRibbonView();
 		DECLARE_DYNCREATE(CGLProjectInRibbonView)
@@ -743,6 +771,8 @@ public:
 	afx_msg void OnDeleteRegion();
 	afx_msg void OnDeletedMesh();
 	afx_msg void OnHoleFilling();
+	afx_msg void OnLodNormal();
+	afx_msg void OnLodLod();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const

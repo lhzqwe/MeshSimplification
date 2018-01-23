@@ -60,6 +60,8 @@
 #define ID_DELETE_REGION                32790
 #define ID_DELETEDMESH                  32791
 #define ID_HOLEFILLING                  32792
+#define ID_LOD_NORMAL                   32793
+#define ID_LOD_LOD                      32794
 
 // Next default values for new objects
 // 
