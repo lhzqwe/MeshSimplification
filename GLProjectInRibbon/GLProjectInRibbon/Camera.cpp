@@ -20,6 +20,11 @@ void Camera::SetUp(GLfloat x, GLfloat y, GLfloat z)
 	Up = glm::normalize(glm::vec3(x, y, z));
 }
 
+void Camera::MoveForward(float velocity, float dTime)
+{
+	this->Position += (this->Front * velocity * dTime);
+}
+
 glm::mat4 Camera::GetViewMatrix()
 {
 	return glm::lookAt(this->Position, this->Position + this->Front, this->Up);

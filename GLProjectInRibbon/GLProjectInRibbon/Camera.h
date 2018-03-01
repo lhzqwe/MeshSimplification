@@ -71,6 +71,8 @@ public:
 	void SetFront(GLfloat x, GLfloat y, GLfloat z);
 	void SetUp(GLfloat x, GLfloat y, GLfloat z);
 
+	void MoveForward(float velocity, float dTime);
+
 	//Returns the view matrix caculated using Eular Angles and the LookAt Matrix
 	glm::mat4 GetViewMatrix();
 	//Process input received from any keyboard-like input system.Accept input parameter in the from of camera defined ENUM

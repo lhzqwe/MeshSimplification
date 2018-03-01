@@ -19,6 +19,9 @@ public:
 	~Color();
 
 public:
+	void SetColor(float r, float g, float b);
+
+public:
 	float R;
 	float G;
 	float B;

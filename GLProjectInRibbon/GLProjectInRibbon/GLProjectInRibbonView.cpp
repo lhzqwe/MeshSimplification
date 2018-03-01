@@ -36,6 +36,8 @@ using std::cout;
 using std::cin;
 using std::endl;
 
+#include <time.h>
+
 #include <map>
 
 // New codes end.
@@ -91,6 +93,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_HOLEFILLING, &CGLProjectInRibbonView::OnHoleFilling)
 	ON_COMMAND(ID_LOD_NORMAL, &CGLProjectInRibbonView::OnLodNormal)
 	ON_COMMAND(ID_LOD_LOD, &CGLProjectInRibbonView::OnLodLod)
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -169,7 +172,7 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 
 	TimeEnd();
 
-	//DrawTextInfo();
+	DrawTextInfo();
 
 	SwapBuffers(pDC->m_hDC);
 }
@@ -522,6 +525,13 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_ARB);
 
+	draw_timer_id_event = 0;
+
+	delta_time_ = 0;
+	frames_ = 0;
+	frame_rate_ = 30;
+	average_frame_time_milliseconds_ = 33.333;
+
 	return 0;
 }
 
@@ -603,6 +613,12 @@ void CGLProjectInRibbonView::OnDestroy()
 	}*/
 
 	DeleteTree();
+
+	if (draw_timer_id_event != 0)
+	{
+		KillTimer(draw_timer_id_event);
+	}
+
 	//_CrtDumpMemoryLeaks();
 }
 
@@ -895,16 +911,17 @@ void CGLProjectInRibbonView::ChooseLodModel(float distance)
 
 void CGLProjectInRibbonView::GetFPS(double deltaTime)
 {
-	static double total_frames = 0.0f;
+	/*static double total_frames = 0.0f;
 	static double total_time = 0.0f;
 	++total_frames;
 	total_time += deltaTime;
 	if (total_time > DBL_MAX)
 	{
-		total_frames = 0.0f;
-		total_time = 0.0f;
+	total_frames = 0.0f;
+	total_time = 0.0f;
 	}
-	num_fps_ = total_frames / total_time;
+	num_fps_ = total_frames / total_time;*/
+	num_fps_ = 1.0 / deltaTime;
 }
 
 
@@ -1382,15 +1399,49 @@ void CGLProjectInRibbonView::GLSetRenderState()
 
 void CGLProjectInRibbonView::TimeStart()
 {
-	QueryPerformanceFrequency(&frequency_);
-	QueryPerformanceCounter(&count1_);
+	/*QueryPerformanceFrequency(&frequency_);
+	QueryPerformanceCounter(&count1_);*/
+	begin_frame_ = clock();
+}
+
+double CGLProjectInRibbonView::ClockToMilliseconds(clock_t ticks)
+{
+	return (ticks / (double)CLOCKS_PER_SEC) * 1000.0;
 }
 
 void CGLProjectInRibbonView::TimeEnd()
 {
-	QueryPerformanceCounter(&count2_);
-	double frametime = (count2_.QuadPart - count1_.QuadPart) * 1000.0 / frequency_.QuadPart;
-	GetFPS(frametime);
+	/*QueryPerformanceCounter(&count2_);
+	double frametime = (count2_.QuadPart - count1_.QuadPart) * 1000000.0 / frequency_.QuadPart;
+	frametime /= 1000000.0;
+	cout << frametime << endl;
+	GetFPS(frametime);*/
+	end_frame_ = clock();
+	
+	delta_time_ += end_frame_ - begin_frame_;
+	++frames_;
+	//cout << ClockToMilliseconds(delta_time_) << endl;
+
+	if (frames_ == 30)
+	{
+		double time_seconds = ClockToMilliseconds(delta_time_) / 1000.0;
+		num_fps_ = frames_ / time_seconds;
+		if (num_fps_ > 150.0)
+			num_fps_ = 150.0;
+		frames_ = 0;
+		delta_time_ = 0;
+	}
+
+	/*cout << ClockToMilliseconds(delta_time_) << endl;
+
+	if (ClockToMilliseconds(delta_time_) > 100.0)
+	{
+	frame_rate_ = (double)frames_ * 0.5 + frame_rate_ * 0.5;
+	frames_ = 0;
+	delta_time_ = 0;
+	average_frame_time_milliseconds_ = 100.0 / (frame_rate_ == 0 ? 0.01 : frame_rate_);
+	num_fps_ = 1000.0f / average_frame_time_milliseconds_;
+	}*/
 }
 
 void CGLProjectInRibbonView::DrawMesh(int drawMode)
@@ -4522,9 +4573,15 @@ void CGLProjectInRibbonView::OnLodNormal()
 	cout << "Lod normal ..." << endl;
 
 	LoadLodMeshes();
-	GenerateLodScene(10);
+	GenerateLodScene(50);
 	AdjustLodCamera();
 	SetDrawingMode(DrawType(DrawType::LOD_DISPLAY));
+	
+	//Set draw timer ...
+	if (draw_timer_id_event == 0)
+		draw_timer_id_event = SetTimer(1, 33, NULL);
+
+	cout << "Draw set timer id event : " << draw_timer_id_event << endl;
 
 	Invalidate();
 }
@@ -4708,6 +4765,16 @@ void CGLProjectInRibbonView::DrawLODMode()
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
 	glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(matrix_view_));
 	// Draw the loaded model
+	
+	clock_t start = clock();
+	MeshesLodDetermination(camera_->Position);
+	clock_t end = clock();
+	cout << ClockToMilliseconds(end - start) << "milliseconds ... "<< endl;
+
+	vector<Color> normal_colors(3, Color(1.0f, 1.0f, 1.0f));
+	normal_colors[0].SetColor(1.0f, 0.0f, 0.0f);
+	normal_colors[1].SetColor(0.0f, 1.0f, 0.0f);
+	normal_colors[2].SetColor(0.0f, 0.0f, 1.0f);
 
 	for (auto & mesh : lod_scene_.meshes_map)
 	{
@@ -4722,8 +4789,22 @@ void CGLProjectInRibbonView::DrawLODMode()
 		matrix_model_ = glm::translate(matrix_model_, glm::vec3(-lod_scene_.center_point.x, -lod_scene_.center_point.y, -lod_scene_.center_point.z));
 		glUniformMatrix4fv(glGetUniformLocation(shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
 
-		Color normalColor(1.0f, 1.0f, 1.0f);
-		InitMaterial(normalColor, *shader_);
+		//Color normalColor(1.0f, 1.0f, 1.0f);
+		//InitMaterial(normalColor, *shader_);
+		InitMaterial(normal_colors[lod], *shader_);
 		lod_scene_.meshes[lod].Draw(*shader_);
 	}
+}
+
+void CGLProjectInRibbonView::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO:  在此添加消息处理程序代码和/或调用默认值
+
+	if (nIDEvent == draw_timer_id_event)
+	{
+		camera_->MoveForward(3.0f, 0.033f);
+		Invalidate(TRUE);
+	}
+
+	CView::OnTimer(nIDEvent);
 }

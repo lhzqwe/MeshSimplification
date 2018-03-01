@@ -547,6 +547,7 @@ public:
 	void DrawSmoothMesh();
 	void TimeEnd();
 	void TimeStart();
+	double ClockToMilliseconds(clock_t ticks);
 	void InitMaterial(Color& pColor, Shader & shader);
 	void InitMaterial(Shader & shader);
 	void InitDirectionLighting();
@@ -639,6 +640,13 @@ private:
 	LARGE_INTEGER count1_;
 	LARGE_INTEGER count2_;
 
+	clock_t begin_frame_;
+	clock_t end_frame_;
+	clock_t delta_time_;
+	unsigned int frames_;
+	double frame_rate_;
+	double average_frame_time_milliseconds_;
+
 	float num_distance_;
 	double num_fps_;
 
@@ -713,6 +721,9 @@ private:
 
 	MeshGpuManager default_gm_;
 
+	//Display FPS info
+	UINT_PTR draw_timer_id_event;
+
 
 
 public:
@@ -773,6 +784,7 @@ public:
 	afx_msg void OnHoleFilling();
 	afx_msg void OnLodNormal();
 	afx_msg void OnLodLod();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const
