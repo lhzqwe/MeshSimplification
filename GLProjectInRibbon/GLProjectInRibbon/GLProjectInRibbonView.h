@@ -183,7 +183,8 @@ enum class DrawType{
 	DELETE_REGION,
 	AFTER_DELETE_MESH,
 	AFTER_REFINE_MESH,
-	LOD_DISPLAY
+	LOD_DISPLAY,
+	LOD_NEW_DISPLAY
 };
 
 class CGLProjectInRibbonView : public CView
@@ -615,6 +616,8 @@ private:
 	Shader* region_shader_;
 	Shader* text_shader_;
 	Shader* mesh_line_mode_shader_;
+	Shader* dynamic_lod_shader_;
+	Shader* instanced_draw_shader_;
 	Model* model_;
 	string model_name_;
 	Camera* camera_;
@@ -765,11 +768,26 @@ public:
 
 	LodScene lod_scene_;
 
+//New Lod method based on Gpu
+	static const int NUM_LOD = 3;
+
+	GLuint instance_world_pos_vao;
+	GLuint instance_world_pos_vbo;
+	GLuint lod_tfb;
+	GLuint lod_vbo[NUM_LOD];
+	GLuint judge_points_size;
+	GLuint cull_query[NUM_LOD];
+	int lod_tree_nums[NUM_LOD];
+
+	void InitDataForNewLodMethod();
+
+
 	void LoadLodMeshes();
 	void GenerateLodScene(int num_mesh);
 	void MeshesLodDetermination(glm::vec3 camera_pos);
 	void AdjustLodCamera();
 	void DrawLODMode();
+	void DrawNewLODMode();
 
 protected:
 		CGLProjectInRibbonView();
@@ -785,6 +803,7 @@ public:
 	afx_msg void OnLodNormal();
 	afx_msg void OnLodLod();
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg void OnFeature();
 };
 #ifndef _DEBUG  // debug version in GLProjectInRibbonView.cpp
 inline CGLProjectInRibbonDoc* CGLProjectInRibbonView::GetDocument() const

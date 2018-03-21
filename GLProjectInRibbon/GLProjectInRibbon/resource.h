@@ -62,6 +62,7 @@
 #define ID_HOLEFILLING                  32792
 #define ID_LOD_NORMAL                   32793
 #define ID_LOD_LOD                      32794
+#define ID_FEATURE                      32795
 
 // Next default values for new objects
 // 

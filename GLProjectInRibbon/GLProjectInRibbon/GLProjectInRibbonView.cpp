@@ -94,6 +94,7 @@ BEGIN_MESSAGE_MAP(CGLProjectInRibbonView, CView)
 	ON_COMMAND(ID_LOD_NORMAL, &CGLProjectInRibbonView::OnLodNormal)
 	ON_COMMAND(ID_LOD_LOD, &CGLProjectInRibbonView::OnLodLod)
 	ON_WM_TIMER()
+	ON_COMMAND(ID_FEATURE, &CGLProjectInRibbonView::OnFeature)
 END_MESSAGE_MAP()
 
 // CGLProjectInRibbonView construction/destruction
@@ -163,6 +164,9 @@ void CGLProjectInRibbonView::OnDraw(CDC* pDC)
 		break;
 	case DrawType::LOD_DISPLAY:
 		DrawLODMode();
+		break;
+	case DrawType::LOD_NEW_DISPLAY:
+		DrawNewLODMode();
 		break;
 	default:
 		break;
@@ -471,6 +475,14 @@ int CGLProjectInRibbonView::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (mesh_line_mode_shader_ == nullptr) cout << "mesh_line_mode_shader_ " << "init failed..." << endl;
 	else cout << "mesh_line_mode_shader_ " << "init success ..." << endl;
 
+	dynamic_lod_shader_ = new Shader("Shader/dynamic_lod.vert", "Shader/dynamic_lod.geom", "Shader/dynamic_lod.frag");
+	if (dynamic_lod_shader_ == nullptr) cout << "dynamic_lod_shader_ " << "init failed ..." << endl;
+	else cout << "dynamic_lod_shader inited success ..." << endl;
+
+	instanced_draw_shader_ = new Shader("Shader/instanced_draw.vert", "Shader/instanced_draw.frag");
+	if (instanced_draw_shader_ == nullptr) cout << "instanced_draw_shader_ init failed ..." << endl;
+	else cout << "instanced_draw_shader_ init success ..." << endl;
+
 	camera_ = new Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 	if (camera_ == nullptr) cout << "Camera " << "init failed..." << endl;
 	else cout << "Camera " << "init success with position : " << "(" 
@@ -580,6 +592,18 @@ void CGLProjectInRibbonView::OnDestroy()
 	{
 		delete mesh_line_mode_shader_;
 		mesh_line_mode_shader_ = nullptr;
+	}
+
+	if (dynamic_lod_shader_ != nullptr)
+	{
+		delete dynamic_lod_shader_;
+		dynamic_lod_shader_ = nullptr;
+	}
+
+	if (instanced_draw_shader_ != nullptr)
+	{
+		delete instanced_draw_shader_;
+		instanced_draw_shader_ = nullptr;
 	}
 
 	if (model_ != nullptr)
@@ -4590,7 +4614,75 @@ void CGLProjectInRibbonView::OnLodNormal()
 void CGLProjectInRibbonView::OnLodLod()
 {
 	// TODO:  在此添加命令处理程序代码
-	cout << "Lod lod ..." << endl;
+	cout << "Test new mothod for lod ... " << endl;
+	LoadLodMeshes();
+	GenerateLodScene(50);
+	AdjustLodCamera();
+	SetDrawingMode(DrawType(DrawType::LOD_NEW_DISPLAY));
+	InitDataForNewLodMethod();
+
+	if (draw_timer_id_event == 0)
+		draw_timer_id_event = SetTimer(1, 33, NULL);
+
+	cout << "Draw set timer id event : " << draw_timer_id_event << endl;
+
+	Invalidate();
+}
+
+void CGLProjectInRibbonView::InitDataForNewLodMethod()
+{
+	//Input ...
+	assert(!lod_scene_.meshes_map.empty());
+	
+	GLuint points_size = 0;
+
+	vector<glm::vec3> instance_world_pos_v;
+	for (const auto & mesh : lod_scene_.meshes_map)
+	{
+		instance_world_pos_v.push_back(mesh.first);
+		++points_size;
+	}
+
+	judge_points_size = points_size;
+
+	glGenVertexArrays(1, &instance_world_pos_vao);
+	glGenBuffers(1, &instance_world_pos_vbo);
+
+	glBindBuffer(GL_ARRAY_BUFFER, instance_world_pos_vbo);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		instance_world_pos_v.size() * sizeof(glm::vec3),
+		&instance_world_pos_v[0],
+		GL_STATIC_DRAW);
+
+	glBindVertexArray(instance_world_pos_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, instance_world_pos_vbo);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (GLvoid*)0);
+	glBindVertexArray(0);
+
+	//Transform feedback ...		
+	glGenTransformFeedbacks(1, &lod_tfb);
+	glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, lod_tfb);
+
+	glGenBuffers(3, lod_vbo);
+
+	for (int i = 0; i < 3; ++i)
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, lod_vbo[i]);
+		glBufferData(GL_ARRAY_BUFFER,
+			1024 * 1024 * sizeof(GLfloat),
+			NULL, GL_DYNAMIC_COPY);
+		glBindVertexArray(lod_scene_.meshes[i].VAO);
+		glBindBuffer(GL_ARRAY_BUFFER, lod_vbo[i]);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+		glVertexAttribDivisor(4, 1);
+		glBindVertexArray(0);
+		glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, i, lod_vbo[i]);
+	}
+
+	glGenQueries(NUM_LOD, cull_query);
 }
 
 void CGLProjectInRibbonView::LoadLodMeshes()
@@ -4796,6 +4888,74 @@ void CGLProjectInRibbonView::DrawLODMode()
 	}
 }
 
+void CGLProjectInRibbonView::DrawNewLODMode()
+{
+	//lod determination pass ...
+	dynamic_lod_shader_->Use();
+
+	glm::mat4 view_matrix = camera_->GetViewMatrix();
+	glm::vec2 lod_distance(100.0f, 500.0f);
+
+	glUniformMatrix4fv(glGetUniformLocation(dynamic_lod_shader_->Program, "view_matrix"), 1, GL_FALSE, glm::value_ptr(view_matrix));
+	glUniform2f(glGetUniformLocation(dynamic_lod_shader_->Program, "lod_distance"), lod_distance.x, lod_distance.y);
+
+	glEnable(GL_RASTERIZER_DISCARD);
+
+	for (int i = 0; i < NUM_LOD; ++i)
+	{
+		glBeginQueryIndexed(GL_PRIMITIVES_GENERATED, i, cull_query[i]);
+	}
+
+	glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, lod_tfb);
+	glBeginTransformFeedback(GL_POINTS);
+	glBindVertexArray(instance_world_pos_vao);
+	glDrawArrays(GL_POINTS, 0, judge_points_size);
+	glBindVertexArray(0);
+	glEndTransformFeedback();
+	glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, 0);
+
+	for (int i = 0; i < NUM_LOD; ++i)
+	{
+		glEndQueryIndexed(GL_PRIMITIVES_GENERATED, i);
+	}
+
+	glDisable(GL_RASTERIZER_DISCARD);
+
+	//draw instanced pass ...
+	instanced_draw_shader_->Use();
+
+	vector<Color> lod_colors;
+	lod_colors.push_back(Color(1.0f, 0.0f, 0.0f));
+	lod_colors.push_back(Color(0.0f, 1.0f, 0.0f));
+	lod_colors.push_back(Color(0.0f, 0.0f, 1.0f));
+
+	for (int i = 0; i < NUM_LOD; ++i)
+	{
+		auto & color = lod_colors[i];
+		matrix_model_ = glm::mat4(1.0);
+		matrix_model_ = glm::scale(matrix_model_, glm::vec3(num_model_scale_));
+		matrix_model_ = glm::translate(matrix_model_, glm::vec3(-lod_scene_.center_point.x, -lod_scene_.center_point.y, -lod_scene_.center_point.z));
+		glUniformMatrix4fv(glGetUniformLocation(instanced_draw_shader_->Program, "model"), 1, GL_FALSE, glm::value_ptr(matrix_model_));
+		glUniformMatrix4fv(glGetUniformLocation(instanced_draw_shader_->Program, "view"), 1, GL_FALSE, glm::value_ptr(view_matrix));
+		glUniformMatrix4fv(glGetUniformLocation(instanced_draw_shader_->Program, "projection"), 1, GL_FALSE, glm::value_ptr(matrix_projection_));
+
+		InitDirectionLighting(*instanced_draw_shader_);
+		InitMaterial(color, *instanced_draw_shader_);
+
+		auto & mesh = lod_scene_.meshes[i];
+
+		glBindVertexArray(mesh.VAO);
+		glGetQueryObjectiv(cull_query[i], GL_QUERY_RESULT, &lod_tree_nums[i]);
+		//cout << "lod " << i << " nums : " << lod_tree_nums[i] << endl;
+		if (lod_tree_nums[i] > 0)
+		{
+			glDrawElementsInstanced(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0, lod_tree_nums[i]);
+		}
+		glBindVertexArray(0);
+	}
+
+}
+
 void CGLProjectInRibbonView::OnTimer(UINT_PTR nIDEvent)
 {
 	// TODO:  在此添加消息处理程序代码和/或调用默认值
@@ -4807,4 +4967,11 @@ void CGLProjectInRibbonView::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	CView::OnTimer(nIDEvent);
+}
+
+
+void CGLProjectInRibbonView::OnFeature()
+{
+	// TODO:  在此添加命令处理程序代码
+	cout << "Feature ..." << endl;
 }

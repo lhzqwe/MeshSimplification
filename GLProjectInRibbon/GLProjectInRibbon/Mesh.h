@@ -90,7 +90,7 @@ public:
 
 	bool isDeleted();
 
-private:
+public:
 	/* Render data */
 	GLuint VAO, VBO, EBO;
 	

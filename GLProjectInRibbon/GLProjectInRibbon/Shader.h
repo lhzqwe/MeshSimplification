@@ -20,6 +20,7 @@ public:
 	GLuint Program;
 	//Constructor read and create shader
 	Shader(const GLchar* vertexSourcePath, const GLchar* fragmentSourcePath);
+	Shader(const GLchar* vertexSourcePath, const GLchar* geometrySourcePath, GLchar* fragmentSourcePath);
 	//Use Program
 	void Use();
 };
